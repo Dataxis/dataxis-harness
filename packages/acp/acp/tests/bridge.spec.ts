@@ -74,6 +74,30 @@ describe('automation-only ACP bridge', () => {
     expect(harness.ctx.agents.get(SessionId(sessionId))?.options).toEqual({})
   })
 
+  it('advertises the model selector and applies a live model switch', async () => {
+    harness = await makeBridgeHarness({ script: [textResponse('switched')] })
+    await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const created = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
+
+    expect(created.configOptions?.[0]).toMatchObject({
+      type: 'select',
+      id: 'model',
+      category: 'model',
+      currentValue: 'mock',
+      options: [{ value: 'mock', name: 'Mock' }],
+    })
+
+    const set = await harness.client.setSessionConfigOption({
+      sessionId: created.sessionId,
+      configId: 'model',
+      value: 'other-model',
+    })
+    expect(set.configOptions?.[0]?.currentValue).toBe('other-model')
+
+    await harness.client.prompt({ sessionId: created.sessionId, prompt: [{ type: 'text', text: 'go' }] })
+    expect(harness.adapter.requests[0]?.model).toBe('other-model')
+  })
+
   it('concatenates text blocks without exposing protocol framing to the model', async () => {
     harness = await makeBridgeHarness({ script: [textResponse('done')] })
     await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })

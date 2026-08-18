@@ -29,7 +29,10 @@ import {
   type NewSessionResponse,
   type PromptRequest,
   type PromptResponse,
+  type SessionConfigOption,
   type SessionNotification,
+  type SetSessionConfigOptionRequest,
+  type SetSessionConfigOptionResponse,
   type StopReason,
   type Stream,
 } from '@agentclientprotocol/sdk'
@@ -82,6 +85,100 @@ export const Config: Schema<AcpConfig> = Schema.object({
   model: Schema.string(),
 })
 
+/** One model advertised over the ACP wire (stable configOptions + unstable models). */
+interface AdvertisedModel {
+  id: string
+  name: string
+  description?: string
+}
+
+/**
+ * Resolve the model catalog to advertise for the configured provider route.
+ * Falls back to the single configured model when the llm service is absent,
+ * the provider has no adapter, or discovery fails.
+ * @param ctx - bridge context carrying the optional llm service.
+ * @param provider - configured provider route.
+ * @param model - configured exact model id.
+ */
+async function resolveAdvertisedModels(
+  ctx: Context,
+  provider: string | undefined,
+  model: string | undefined,
+): Promise<AdvertisedModel[]> {
+  const llm = ctx.get('llm')
+  if (provider !== undefined && llm !== undefined) {
+    try {
+      const listed = await llm.listModels(provider)
+      if (listed.length > 0) {
+        return listed.map(info => ({
+          id: info.id,
+          name: info.name || info.id,
+          ...info.description === undefined ? {} : { description: info.description },
+        }))
+      }
+    } catch {
+      // Fall through to the configured-model-only advertisement.
+    }
+  }
+  return model === undefined ? [] : [{ id: model, name: model }]
+}
+
+/**
+ * Build the stable ACP model selector, or `undefined` when no model is advertised.
+ * @param models - catalog to list as options.
+ * @param current - the live selection, or `undefined` to default to the first entry.
+ */
+function modelConfigOption(
+  models: readonly AdvertisedModel[],
+  current: string | undefined,
+): SessionConfigOption | undefined {
+  const first = models[0]
+  if (first === undefined) return undefined
+  return {
+    type: 'select',
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    currentValue: current ?? first.id,
+    options: models.map(model => ({
+      value: model.id,
+      name: model.name,
+      ...model.description === undefined ? {} : { description: model.description },
+    })),
+  }
+}
+
+/**
+ * Compose the `session/new` response: the stable model `configOptions` selector
+ * plus the unstable `models` state (current id and available entries) that Buzz
+ * reads for its model picker. `models` is not part of the SDK response schema,
+ * so it is returned as an extra field typed by intersection rather than declared.
+ * @param sessionId - the fresh session identity.
+ * @param models - advertised catalog.
+ * @param current - the live selection.
+ */
+function newSessionResponse(
+  sessionId: SessionId,
+  models: readonly AdvertisedModel[],
+  current: string | undefined,
+): NewSessionResponse & {
+  models: { currentModelId?: string; availableModels: { modelId: string; name: string; description?: string }[] }
+} {
+  const option = modelConfigOption(models, current)
+  return {
+    sessionId,
+    ...option === undefined ? {} : { configOptions: [option] },
+    models: {
+      ...current === undefined ? {} : { currentModelId: current },
+      availableModels: models.map(model => ({
+        modelId: model.id,
+        name: model.name,
+        ...model.description === undefined ? {} : { description: model.description },
+      })),
+    },
+  }
+}
+
 /** Per-session protocol state. */
 interface SessionRecord {
   agent: Agent
@@ -89,6 +186,10 @@ interface SessionRecord {
   dispose: () => Promise<void>
   /** Ordered assistant-output delivery; every task contains its own failure. */
   outputTail: Promise<void>
+  /** Model catalog advertised for this session's selector, plus the live selection. */
+  models: readonly AdvertisedModel[]
+  /** The session's current model; `session/set_config_option` updates it in place. */
+  selectedModel: string | undefined
   /** In-flight admission/turn/output lifecycle for exact settlement. */
   inflight: {
     resolve: (reason: StopReason) => void
@@ -284,6 +385,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
     })
   })
 
+  // A client-selected model (`session/set_config_option`) wins the next model
+  // step: the loop resolves provider/model through the agent/request waterfall,
+  // so the bridge overrides the session's live selection without mutating the
+  // AgentOptions the agent was created with.
+  ctx.on('agent/request', async (payload, next) => {
+    const record = ownedRecord(payload.agent)
+    const model = record?.selectedModel
+    if (model === undefined) return next()
+    const base = await next()
+    return { ...base, model }
+  })
+
   const makeAgent = (connection: AgentSideConnection): AcpAgent => {
     conn = connection
     return {
@@ -323,13 +436,28 @@ export function apply(ctx: Context, config: AcpConfig): void {
           await handle.dispose()
           throw internalError('connection closed during session/new')
         }
+        const advertised = await resolveAdvertisedModels(ctx, config.provider, config.model)
+        const selectedModel = config.model ?? advertised[0]?.id
         sessions.set(sessionId, {
           agent: handle.agent,
           dispose: () => handle.dispose(),
           outputTail: Promise.resolve(),
+          models: advertised,
+          selectedModel,
           inflight: undefined,
         })
-        return { sessionId }
+        return newSessionResponse(sessionId, advertised, selectedModel)
+      },
+
+      async setSessionConfigOption(params: SetSessionConfigOptionRequest): Promise<SetSessionConfigOptionResponse> {
+        assertOpen()
+        const record = requireSession(SessionId(params.sessionId))
+        // Only the model selector is mutable; no other config option is offered.
+        if (params.configId === 'model' && typeof params.value === 'string') {
+          record.selectedModel = params.value
+        }
+        const option = modelConfigOption(record.models, record.selectedModel)
+        return { configOptions: option === undefined ? [] : [option] }
       },
 
       async prompt(params: PromptRequest): Promise<PromptResponse> {
