@@ -288,6 +288,8 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
     inputActions: { setDraft: () => {}, submit: () => {} } as unknown as WorkflowRunPanelProps['inputActions'],
     useWorkspaces: (() => undefined) as WorkflowRunPanelProps['useWorkspaces'],
     useTurnData: () => undefined,
+    useShowReasoning: ((selector: (value: boolean) => unknown) => selector(true)) as unknown as WorkflowRunPanelProps['useShowReasoning'],
+    useShowToolCalls: ((selector: (value: boolean) => unknown) => selector(true)) as unknown as WorkflowRunPanelProps['useShowToolCalls'],
     selectedCallId: undefined,
     cwd: undefined,
     openFile: () => {},

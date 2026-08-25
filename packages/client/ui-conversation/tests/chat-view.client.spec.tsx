@@ -193,8 +193,12 @@ function makeHarness(init?: Partial<ConversationSnapshot>) {
         ? location.turn.data.get(dataKey)
         : undefined
     })
+    const useShowReasoning = ((selector: (value: boolean) => unknown) => selector(true)) as unknown as
+      ChatNodeViewProps<ChatNode['kind']>['useShowReasoning']
+    const useShowToolCalls = ((selector: (value: boolean) => unknown) => selector(true)) as unknown as
+      ChatNodeViewProps<ChatNode['kind']>['useShowToolCalls']
     const nodeProps = <Kind extends ChatNode['kind']>(): ChatNodeViewProps<Kind> => (
-      { ...props, ...nodeOwner, useTurnData } as unknown as ChatNodeViewProps<Kind>
+      { ...props, ...nodeOwner, useTurnData, useShowReasoning, useShowToolCalls } as unknown as ChatNodeViewProps<Kind>
     )
     switch (nodeOwner.node.kind) {
       case 'user':

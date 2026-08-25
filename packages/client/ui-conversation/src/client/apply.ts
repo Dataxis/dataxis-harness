@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  resolveWorkspacePath, type ISessions, type SessionId,
+  resolveWorkspacePath, type ISessions, type SessionId, type SnapshotStore,
 } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
 // goes through the service, never a value import (client bundle purity gate).
@@ -27,6 +27,9 @@ import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
 import { InputBar } from './skeleton/InputBar.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
+import { AppearanceSettingsStore } from './appearance-store.ts'
+import { StepsVisibilityMenu } from './skeleton/StepsVisibilityMenu.tsx'
+import type { StepsVisibilityMenuInjected } from './skeleton/StepsVisibilityMenu.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { StatsLine } from './chat/StatsLine.tsx'
 import { ApprovalPanel } from './skeleton/ApprovalPanel.tsx'
@@ -39,6 +42,7 @@ import { en, NS, zh, type ConversationKey } from './locales.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings } from '../submission-settings.ts'
+import { APPEARANCE_SETTINGS_NAMESPACE, type AppearanceSettings } from '../appearance-settings.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -75,17 +79,25 @@ const ABSENT_MENU_LAUNCHER = {
   subscribe: () => () => {},
 }
 
-const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
-  hooks: {
-    turnData: ({ useSession }, nodeKey) => function useTurnData(key) {
-      return useSession((snapshot) => {
-        const location = snapshot.chat.nodes.get(nodeKey)?.location
-        return location?.kind === 'turn' || location?.kind === 'step'
-          ? location.turn.data.get(key)
-          : undefined
-      })
+/** Keyed chat-node inject: the turn-data hook factory plus the step-visibility sources. */
+function chatNodeInject(
+  showToolCalls: SnapshotStore<boolean>,
+  showReasoning: SnapshotStore<boolean>,
+): ChatNodeTurnDataInjected {
+  return {
+    hooks: {
+      turnData: ({ useSession }, nodeKey) => function useTurnData(key) {
+        return useSession((snapshot) => {
+          const location = snapshot.chat.nodes.get(nodeKey)?.location
+          return location?.kind === 'turn' || location?.kind === 'step'
+            ? location.turn.data.get(key)
+            : undefined
+        })
+      },
+      showToolCalls,
+      showReasoning,
     },
-  },
+  }
 }
 
 /** Resolve the session-scoped conversation face (scope-addressed send/cancel), failing loud. */
@@ -133,6 +145,9 @@ export function apply(ctx: Context): void {
   const submissionPolicy = new ComposerSubmissionPolicy(
     ctx.settingsScope.bind<ConversationSettings>({ namespace: CONVERSATION_SETTINGS_NAMESPACE }),
   )
+  const appearance = new AppearanceSettingsStore(
+    ctx.settingsScope.bind<AppearanceSettings>({ namespace: APPEARANCE_SETTINGS_NAMESPACE }),
+  )
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -144,6 +159,24 @@ export function apply(ctx: Context): void {
       setBusyEnter: (behavior) => { submissionPolicy.setBusyEnter(behavior) },
     }),
   }, EnterBehaviorRow))
+
+  // Intermediary-step visibility rides the composer tool row beside the
+  // access/plan controls; the chat renderers read the same sources through
+  // the keyed chat-node inject.
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'steps-visibility',
+    order: 10,
+    locale: NS,
+    inject: (): StepsVisibilityMenuInjected => ({
+      hooks: {
+        showToolCalls: appearance.showToolCalls,
+        showReasoning: appearance.showReasoning,
+      },
+      setShowToolCalls: (value) => { appearance.setShowToolCalls(value) },
+      setShowReasoning: (value) => { appearance.setShowReasoning(value) },
+    }),
+  }, StepsVisibilityMenu))
 
   // Chat semantic reader positions by session, surviving view switches and
   // width reflow when the tab ring remounts the view. Deliberately not
@@ -380,7 +413,10 @@ export function apply(ctx: Context): void {
     label: () => t('view.chat'),
     locale: NS,
     children: {
-      'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: CHAT_NODE_INJECT },
+      'conversation.chat.node': {
+        kind: 'keyed', scope: 'session',
+        inject: chatNodeInject(appearance.showToolCalls, appearance.showReasoning),
+      },
     },
     store: chatStore,
     inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {

@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
-  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, ToolCallBlock,
+  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, SnapshotStore, ToolCallBlock,
   TurnLocation, WorkspaceId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -349,6 +349,10 @@ export type UseChatNodeTurnData = <Key extends Extract<keyof ConversationTurnDat
 export interface ChatNodeTurnDataInjected {
   hooks: {
     turnData: SlotHookFactory<'conversation.chat.node', UseChatNodeTurnData>
+    /** Reactive tool-call row visibility, bound as `useShowToolCalls`. */
+    showToolCalls: SnapshotStore<boolean>
+    /** Reactive reasoning row visibility, bound as `useShowReasoning`. */
+    showReasoning: SnapshotStore<boolean>
   }
 }
 
