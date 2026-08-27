@@ -75,8 +75,9 @@ function tailOwner(
   seq: number,
   openFile: (path: string) => void = () => {},
   turn = 1,
+  downloadFile: (path: string) => void = () => {},
 ): TurnTailOwnerProps {
-  return { seq, openFile, downloadFile: () => {}, turn: turnLocation(turn, data) }
+  return { seq, openFile, downloadFile, turn: turnLocation(turn, data) }
 }
 
 interface TimelineSnapshot {
@@ -487,17 +488,19 @@ describe('plugin registration', () => {
     expect(entry?.inject?.()).toEqual({ isLoopback: false, hooks: { hostDescription } })
 
     // The prose face is live while the plugin is: a produced turn yields a
-    // resolver whose matches open through the owner-supplied opener.
-    const opened: string[] = []
+    // resolver whose matches download through the owner-supplied downloader.
+    const downloaded: string[] = []
     const owner = tailOwner(
       produced([2, 'site/report.html']),
       3,
-      (path) => { opened.push(path) },
+      () => {},
+      1,
+      (path) => { downloaded.push(path) },
     )
     const service = (ctx as unknown as { get(name: string): ChatFileMentions | undefined }).get('chatFileMentions')
     const mentions = service?.forClosing(owner)
     mentions?.resolve('report.html')?.open()
-    expect(opened).toEqual(['site/report.html'])
+    expect(downloaded).toEqual(['site/report.html'])
     // A turn that produced nothing yields no vocabulary at all.
     expect(service?.forClosing(tailOwner(undefined, 2))).toBeUndefined()
 
