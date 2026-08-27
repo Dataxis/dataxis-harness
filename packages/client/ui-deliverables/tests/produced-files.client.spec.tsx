@@ -76,7 +76,7 @@ function tailOwner(
   openFile: (path: string) => void = () => {},
   turn = 1,
 ): TurnTailOwnerProps {
-  return { seq, openFile, turn: turnLocation(turn, data) }
+  return { seq, openFile, downloadFile: () => {}, turn: turnLocation(turn, data) }
 }
 
 interface TimelineSnapshot {
@@ -309,6 +309,7 @@ describe('ProducedFiles row', () => {
   it('keeps one measured line, updates on resize, and opens a file or the workspace folder', () => {
     const paths = ['deep/a.html', 'b.css', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts']
     const openFile = vi.fn<(path: string) => void>()
+    const downloadFile = vi.fn<(path: string) => void>()
     let available = 226
     let resize: ResizeObserverCallback | undefined
     const disconnect = vi.fn()
@@ -332,18 +333,24 @@ describe('ProducedFiles row', () => {
     const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockImplementation(function getProbeRect(this: HTMLElement) {
         if (this.closest('[aria-hidden="true"]') === null) return rect(0)
-        if (this.tagName !== 'BUTTON') return rect(60)
-        return rect(this.textContent === 'a.html' || this.textContent === 'b.css' ? 50 : 100)
+        if (this.tagName !== 'BUTTON') {
+          if (this.classList.contains('chip')) {
+            const text = this.textContent ?? ''
+            return rect(text.startsWith('a.html') || text.startsWith('b.css') ? 50 : 100)
+          }
+          return rect(60)
+        }
+        return rect(0)
       })
 
     const view = render(
-      <ProducedFiles matched={paths} openFile={openFile} {...capability(true)} t={t} />,
+      <ProducedFiles matched={paths} openFile={openFile} downloadFile={downloadFile} {...capability(true)} t={t} />,
     )
     expect(view.getByText('产物')).toBeTruthy()
     const row = view.container.querySelector('[data-produced-files-row]')
     if (!(row instanceof HTMLElement)) throw new Error('produced row missing')
     // The third probe is 100px: two chips plus the remainder fit, three do not.
-    expect(within(row).getAllByRole('button')).toHaveLength(2)
+    expect(within(row).getAllByRole('button')).toHaveLength(4)
     expect(within(row).getByText('+ 5 个文件')).toBeTruthy()
     const chip = view.getByRole('button', { name: '打开 deep/a.html' })
     expect(chip.textContent).toBe('a.html')
@@ -358,22 +365,22 @@ describe('ProducedFiles row', () => {
 
     available = 150
     act(() => { resize?.([], {} as ResizeObserver) })
-    expect(within(row).getAllByRole('button')).toHaveLength(1)
+    expect(within(row).getAllByRole('button')).toHaveLength(2)
     expect(within(row).getByText('+ 6 个文件')).toBeTruthy()
 
     // A missing/unsupported computed gap falls back to zero rather than NaN.
     vi.stubGlobal('getComputedStyle', () => ({ columnGap: '', gap: '' } as CSSStyleDeclaration))
     available = 165
     act(() => { resize?.([], {} as ResizeObserver) })
-    expect(within(row).getAllByRole('button')).toHaveLength(2)
+    expect(within(row).getAllByRole('button')).toHaveLength(4)
 
     // Ref callbacks leave nulls in the probe arrays when the candidate set
     // shrinks; the replacement observer must skip those stale slots.
     observeNode.mockClear()
     view.rerender(
-      <ProducedFiles matched={paths.slice(0, 1)} openFile={openFile} {...capability(true)} t={t} />,
+      <ProducedFiles matched={paths.slice(0, 1)} openFile={openFile} downloadFile={downloadFile} {...capability(true)} t={t} />,
     )
-    expect(within(row).getAllByRole('button')).toHaveLength(1)
+    expect(within(row).getAllByRole('button')).toHaveLength(2)
     expect(observeNode).toHaveBeenCalledTimes(3)
 
     view.unmount()
@@ -383,13 +390,14 @@ describe('ProducedFiles row', () => {
 
   it('keeps the folder action absent without overflow or a local native opener', () => {
     const openFile = vi.fn<(path: string) => void>()
+    const downloadFile = vi.fn<(path: string) => void>()
     const view = render(
-      <ProducedFiles matched={['a.md']} openFile={openFile} {...capability(true)} t={t} />,
+      <ProducedFiles matched={['a.md']} openFile={openFile} downloadFile={downloadFile} {...capability(true)} t={t} />,
     )
     const overflowing = ['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md']
     expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
     for (const unavailable of [capability(false), capability(true, false), capability(undefined)]) {
-      view.rerender(<ProducedFiles matched={overflowing} openFile={openFile} {...unavailable} t={t} />)
+      view.rerender(<ProducedFiles matched={overflowing} openFile={openFile} downloadFile={downloadFile} {...unavailable} t={t} />)
       expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
     }
   })
@@ -399,6 +407,7 @@ describe('ProducedFiles row', () => {
       <ProducedFiles
         matched={['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md']}
         openFile={() => {}}
+        downloadFile={() => {}}
         {...capability(false)}
         t={makeTranslate(en)}
       />,

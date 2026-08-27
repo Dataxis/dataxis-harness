@@ -435,6 +435,15 @@ export function apply(ctx: Context): void {
             // app surfaces its own error dialog when the path is unusable.
           })
         },
+        downloadFile: (path) => {
+          const url = new URL('/api/workspace.file', globalThis.location.origin)
+          url.searchParams.set('sessionId', sessionId)
+          url.searchParams.set('path', path)
+          const anchor = document.createElement('a')
+          anchor.href = url.toString()
+          anchor.download = ''
+          anchor.click()
+        },
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),
         // Unregistered 'trajectory' id is safe: the tab ring falls back to

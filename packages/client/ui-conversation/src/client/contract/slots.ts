@@ -328,6 +328,11 @@ export interface TurnTailOwnerProps {
    * view resolves relative paths against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Download a workspace file to the browser (session-workspace-scoped
+   * host download; relative paths resolve against the session cwd).
+   */
+  downloadFile: (path: string) => void
 }
 
 /**
@@ -363,6 +368,7 @@ export interface ChatNodeOwnerProps {
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
   openFile: (path: string) => void
+  downloadFile: (path: string) => void
   inspectCall: (callId: CallId) => void
   forkAt: (seq: number) => void
   /** Resolve a session-authorized historical image for inline display. */
@@ -684,6 +690,11 @@ export interface ChatViewInjected {
    * (relative paths resolve against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Download a workspace file to the browser (session-workspace-scoped host
+   * download; relative paths resolve against the session cwd).
+   */
+  downloadFile: (path: string) => void
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>

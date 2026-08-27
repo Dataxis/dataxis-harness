@@ -27,6 +27,7 @@ import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
   WorkspaceMoveInvalidError, WorkspaceOrderInvalidError, WorkspaceUnknownSessionError,
 } from '@deepseek-ai/dsh-workspace'
+import { FsError } from '@deepseek-ai/dsh-fs'
 // Type-only: brings the `ctx.tools` Context merge into this program (viewFor reads presenters).
 import {
   InvalidPresetIdError, PresetExistsError, PresetMountError,
@@ -119,6 +120,40 @@ const SESSION_SEARCH_PROVIDER_CALL_LIMIT = 100
 const COLD_SUMMARY_BATCH_SIZE = 16
 /** Default maximum artifact size eligible for one cold blankness read. */
 export const DEFAULT_COLD_BLANK_PROBE_MAX_BYTES = 1024
+/** Default maximum workspace-file size served by one download. */
+export const DEFAULT_WORKSPACE_FILE_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024
+
+/** MIME types for the common workspace-file extensions a download may serve. */
+const WORKSPACE_FILE_CONTENT_TYPES: Readonly<Record<string, string>> = {
+  '.csv': 'text/csv',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+  '.txt': 'text/plain',
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.zip': 'application/zip',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+}
+
+/** Resolve the content type for a workspace-file download, falling back to octet-stream. */
+function workspaceFileContentType(path: string): string {
+  const dot = path.lastIndexOf('.')
+  if (dot < 0) return 'application/octet-stream'
+  return WORKSPACE_FILE_CONTENT_TYPES[path.slice(dot).toLowerCase()] ?? 'application/octet-stream'
+}
+
+/** Collapse a workspace path to a header-safe download filename. */
+function workspaceFileBasename(path: string): string {
+  const base = path.split(/[\\/]/).filter(Boolean).pop() ?? 'download'
+  return base.replace(/[^\w.\- ]/g, '_') || 'download'
+}
 
 /** Conversation message event types (the pagination counting unit). */
 const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
@@ -628,6 +663,8 @@ export interface ApiProxyDefaults {
   sessionExportCompressionLevel?: SessionLogCompressionLevel
   /** Maximum artifact size eligible for one cold blankness read. */
   coldBlankProbeMaxBytes?: number
+  /** Maximum workspace-file byte size served by one download; defaults to 10 MiB. */
+  workspaceFileDownloadMaxBytes?: number
   /**
    * Whether handing a path to the native opener can work at all — the
    * `hasDocument` capability the preset roster reports, and the switch
@@ -1077,6 +1114,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     ?? DEFAULT_SESSION_LOG_COMPRESSION_LEVEL
   const coldBlankProbeMaxBytes = defaults.coldBlankProbeMaxBytes
     ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES
+  const workspaceFileDownloadMaxBytes = defaults.workspaceFileDownloadMaxBytes
+    ?? DEFAULT_WORKSPACE_FILE_DOWNLOAD_MAX_BYTES
   /** The seed model each create/resume declares; re-read so it never goes stale. */
   const agentOptions = (): AgentOptions => {
     const { provider, model } = defaults.defaultModelSelection()
@@ -3627,6 +3666,62 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             },
           },
         )
+      },
+
+      async workspaceFile(request, signal) {
+        // The filesystem service is mounted at the host root (fs-sandbox), not
+        // injected by the gateway, so it is read through the optional seam.
+        const fs = ctx.get('fs')
+        if (fs === undefined) {
+          return new Response('workspace file download is unavailable: missing fs service', { status: 500 })
+        }
+        const session = ctx.sessions.get(request.sessionId)
+        if (session === undefined) {
+          return new Response('session not found', { status: 404 })
+        }
+        const cwd = session.header.cwd
+        if (cwd === undefined) {
+          return new Response('session has no workspace', { status: 400 })
+        }
+        try {
+          const cwdTarget = await fs.resolve(cwd)
+          const fileTarget = await fs.resolve(request.path, { cwd })
+          if (!fs.contains(cwdTarget, fileTarget)) {
+            return new Response('path escapes the session workspace', { status: 403 })
+          }
+          const info = await fs.stat(fileTarget, signal)
+          if (info === undefined) {
+            return new Response('file not found', { status: 404 })
+          }
+          if (info.type !== 'file') {
+            return new Response('not a regular file', { status: 400 })
+          }
+          const bytes = await fs.readBytes(fileTarget, signal, workspaceFileDownloadMaxBytes)
+          return new Response(Buffer.from(bytes), {
+            headers: {
+              'content-type': workspaceFileContentType(request.path),
+              'content-disposition': `attachment; filename="${workspaceFileBasename(request.path)}"`,
+            },
+          })
+        } catch (error) {
+          signal.throwIfAborted()
+          if (error instanceof FsError) {
+            if (error.code === 'FS_TOO_LARGE') {
+              return new Response('file exceeds the download size limit', { status: 413 })
+            }
+            if (error.code === 'FS_NOT_FOUND') {
+              return new Response('file not found', { status: 404 })
+            }
+            if (error.code === 'FS_NOT_REGULAR_FILE') {
+              return new Response('not a regular file', { status: 400 })
+            }
+            if (error.code === 'FS_PERMISSION_DENIED' || error.code === 'FS_SANDBOX_DENIED') {
+              return new Response('file access denied', { status: 403 })
+            }
+          }
+          // Generic failure: no host paths or error text leak to the browser.
+          return new Response('workspace file download failed', { status: 500 })
+        }
       },
     },
 
