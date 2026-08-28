@@ -2992,6 +2992,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     // stub is never reached through the fixture's dispatch.
     downloads: {
       sessionLog: () => Promise.resolve(new Response('fixture mode does not serve session export', { status: 404 })),
+      workspaceFile: () => Promise.resolve(new Response('fixture mode does not serve workspace files', { status: 404 })),
     },
   }
 

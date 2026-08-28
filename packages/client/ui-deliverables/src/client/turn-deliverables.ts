@@ -150,26 +150,27 @@ export function basename(path: string): string {
 
 /**
  * File-mention vocabulary over one turn's produced paths, for the closing
- * message's prose: an inline-code token opens the file it names. A token
- * resolves by exact path, or by being exactly the basename of exactly one
- * produced path — a basename two paths share stays inert rather than
- * guessing, so a mention link can never open the wrong file or 404.
+ * message's prose: an inline-code token invokes the supplied action (open or
+ * download) on the file it names. A token resolves by exact path, or by being
+ * exactly the basename of exactly one produced path — a basename two paths
+ * share stays inert rather than guessing, so a mention link can never act on
+ * the wrong file or 404.
  * @param paths - The turn's produced paths (tool order, already deduped).
- * @param openFile - The chat view's file opener.
- * @param label - Localizes the accessible open-label for a resolved path.
+ * @param activate - The action the resolved mention invokes (open or download).
+ * @param label - Localizes the accessible label for a resolved path.
  * @returns The resolver MarkdownText consumes; the full path rides `title`,
  * the same disambiguator the row's chips carry.
  */
 export function producedFileMentions(
   paths: readonly string[],
-  openFile: (path: string) => void,
+  activate: (path: string) => void,
   label: (path: string) => string,
 ): MarkdownFileMentions {
   return {
     resolve(value) {
       const path = paths.includes(value) ? value : onlyPathWithBasename(paths, value)
       if (path === undefined) return undefined
-      return { open: () => { openFile(path) }, label: label(path), title: path }
+      return { open: () => { activate(path) }, label: label(path), title: path }
     },
   }
 }

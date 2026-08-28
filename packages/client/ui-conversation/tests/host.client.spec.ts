@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { SettingsProvider, settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
-  CONVERSATION_SETTINGS_NAMESPACE, DEFAULT_BUSY_ENTER_BEHAVIOR, apply,
+  APPEARANCE_SETTINGS_NAMESPACE, CONVERSATION_SETTINGS_NAMESPACE, DEFAULT_BUSY_ENTER_BEHAVIOR, apply,
 } from '@deepseek-ai/dsh-client-ui-conversation'
 
 class MemorySettings extends SettingsProvider {
@@ -24,6 +24,20 @@ describe('ui-conversation host', () => {
     await ctx.settings.update(ns, { busyEnter: 'steer' })
     expect(ctx.settings.get(ns)).toEqual({ busyEnter: 'steer' })
     await expect(ctx.settings.update(ns, { busyEnter: 'invalid' })).rejects.toThrow()
+    await fiber.dispose()
+    expect(ctx.settings.describe().map(row => row.ns)).not.toContain(ns)
+  })
+
+  it('registers and validates the durable step-visibility preferences', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MemorySettings).await()
+    const fiber = ctx.plugin({ apply })
+    await fiber.await()
+    const ns = settingsNamespace(APPEARANCE_SETTINGS_NAMESPACE)
+    expect(ctx.settings.get(ns)).toEqual({ showToolCalls: true, showReasoning: true })
+    await ctx.settings.update(ns, { showToolCalls: false })
+    expect(ctx.settings.get(ns)).toEqual({ showToolCalls: false, showReasoning: true })
+    await expect(ctx.settings.update(ns, { showToolCalls: 'invalid' })).rejects.toThrow()
     await fiber.dispose()
     expect(ctx.settings.describe().map(row => row.ns)).not.toContain(ns)
   })

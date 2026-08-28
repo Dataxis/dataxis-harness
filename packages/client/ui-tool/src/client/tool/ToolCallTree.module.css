@@ -10,3 +10,12 @@
   padding-left: 8px;
   border-left: 1px solid var(--dsw-alias-border-l2);
 }
+
+.hiddenWorking {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}

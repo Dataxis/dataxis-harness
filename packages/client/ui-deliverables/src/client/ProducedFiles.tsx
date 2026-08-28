@@ -56,8 +56,8 @@ export interface ProducedFilesInjected {
   }
 }
 
-/** Matched paths plus the opener, locale, and injected Host capability. */
-export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
+/** Matched paths plus the opener, downloader, locale, and injected Host capability. */
+export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile' | 'downloadFile'> & {
   matched: readonly string[]
 } & PropsLocale<typeof NS> & InjectFace<ProducedFilesInjected>
 
@@ -71,14 +71,14 @@ function moreLabel(t: ProducedFilesProps['t'], count: number): string {
  * @returns The produced-files row.
  */
 export function ProducedFiles({
-  matched: paths, openFile, isLoopback, useHostDescription, t,
+  matched: paths, openFile, downloadFile, isLoopback, useHostDescription, t,
 }: ProducedFilesProps) {
   const hostCanOpenPath = useHostDescription(description => description?.canOpenPath === true)
   const canOpenPath = isLoopback && hostCanOpenPath
   const limit = Math.min(paths.length, SHOWN_LIMIT)
   const [shownCount, setShownCount] = useState(limit)
   const rowRef = useRef<HTMLDivElement>(null)
-  const chipProbes = useRef<Array<HTMLButtonElement | null>>([])
+  const chipProbes = useRef<Array<HTMLSpanElement | null>>([])
   const moreProbe = useRef<HTMLSpanElement>(null)
 
   useLayoutEffect(() => {
@@ -90,7 +90,7 @@ export function ProducedFiles({
       const styles = getComputedStyle(row)
       const gap = Number.parseFloat(styles.columnGap || styles.gap) || 0
       // React attaches every still-mounted callback ref before layout effects run.
-      const activeChipProbes = chipProbes.current.slice(0, limit) as HTMLButtonElement[]
+      const activeChipProbes = chipProbes.current.slice(0, limit) as HTMLSpanElement[]
       const chips = activeChipProbes.map(probe => probe.getBoundingClientRect().width)
       const more = Array.from({ length: limit + 1 }, (_, candidate) => {
         if (paths.length === candidate) return undefined
@@ -117,18 +117,27 @@ export function ProducedFiles({
       <span className={css.label}>{t('produced.label')}</span>
       <div ref={rowRef} className={css.row} data-produced-files-row>
         {shown.map(path => (
-          <button
-            key={path}
-            type="button"
-            className={css.file}
-            // The full path is the disambiguator when two turns produce files
-            // that share a basename; the chip itself stays short.
-            title={path}
-            aria-label={t('produced.open', { name: path })}
-            onClick={() => { openFile(path) }}
-          >
-            {basename(path)}
-          </button>
+          <span key={path} className={css.chip}>
+            <button
+              type="button"
+              className={css.file}
+              // The full path is the disambiguator when two turns produce files
+              // that share a basename; the chip itself stays short.
+              title={path}
+              aria-label={t('produced.open', { name: path })}
+              onClick={() => { openFile(path) }}
+            >
+              {basename(path)}
+            </button>
+            <button
+              type="button"
+              className={css.download}
+              aria-label={t('produced.download', { name: path })}
+              onClick={() => { downloadFile(path) }}
+            >
+              ↓
+            </button>
+          </span>
         ))}
         {hidden > 0 && <span className={css.more}>{moreLabel(t, hidden)}</span>}
       </div>
@@ -139,15 +148,18 @@ export function ProducedFiles({
       )}
       <div className={css.measure} aria-hidden="true">
         {paths.slice(0, limit).map((path, index) => (
-          <button
+          <span
             key={path}
             ref={(node) => { chipProbes.current[index] = node }}
-            type="button"
-            tabIndex={-1}
-            className={`${css.file} ${css.probe}`}
+            className={`${css.chip} ${css.probe}`}
           >
-            {basename(path)}
-          </button>
+            <button type="button" tabIndex={-1} className={css.file}>
+              {basename(path)}
+            </button>
+            <button type="button" tabIndex={-1} className={css.download}>
+              ↓
+            </button>
+          </span>
         ))}
         <span ref={moreProbe} className={`${css.more} ${css.probe}`} />
       </div>

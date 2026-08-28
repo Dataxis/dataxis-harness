@@ -29,6 +29,8 @@ function props(
   return {
     useSession,
     renderSlot,
+    useShowToolCalls: ((selector: (value: boolean) => unknown) => selector(true)) as unknown as ToolTreeProps['useShowToolCalls'],
+    useShowReasoning: ((selector: (value: boolean) => unknown) => selector(true)) as unknown as ToolTreeProps['useShowReasoning'],
     node: {
       key: `tool:${block.callId}`,
       kind: 'tool-call',

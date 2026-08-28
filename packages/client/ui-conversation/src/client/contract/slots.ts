@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   CommandNode, CompactionSummaryNode, ConversationSnapshot, ConversationTurnDataMap,
-  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, ToolCallBlock,
+  ObservableSnapshot, PendingInteraction, PendingWait, SessionId, SnapshotStore, ToolCallBlock,
   TurnLocation, WorkspaceId,
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -328,6 +328,11 @@ export interface TurnTailOwnerProps {
    * view resolves relative paths against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Download a workspace file to the browser (session-workspace-scoped
+   * host download; relative paths resolve against the session cwd).
+   */
+  downloadFile: (path: string) => void
 }
 
 /**
@@ -349,6 +354,10 @@ export type UseChatNodeTurnData = <Key extends Extract<keyof ConversationTurnDat
 export interface ChatNodeTurnDataInjected {
   hooks: {
     turnData: SlotHookFactory<'conversation.chat.node', UseChatNodeTurnData>
+    /** Reactive tool-call row visibility, bound as `useShowToolCalls`. */
+    showToolCalls: SnapshotStore<boolean>
+    /** Reactive reasoning row visibility, bound as `useShowReasoning`. */
+    showReasoning: SnapshotStore<boolean>
   }
 }
 
@@ -359,6 +368,7 @@ export interface ChatNodeOwnerProps {
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
   openFile: (path: string) => void
+  downloadFile: (path: string) => void
   inspectCall: (callId: CallId) => void
   forkAt: (seq: number) => void
   /** Resolve a session-authorized historical image for inline display. */
@@ -680,6 +690,11 @@ export interface ChatViewInjected {
    * (relative paths resolve against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Download a workspace file to the browser (session-workspace-scoped host
+   * download; relative paths resolve against the session cwd).
+   */
+  downloadFile: (path: string) => void
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>

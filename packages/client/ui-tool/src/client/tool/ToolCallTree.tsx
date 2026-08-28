@@ -88,9 +88,24 @@ const ToolCallBranch = memo(function ToolCallBranch({
  * @returns the Tool call tree.
  */
 export function ToolCallTree({
-  renderSlot, node, selectedCallId, cwd, openFile, inspectCall, t,
+  renderSlot, node, useShowToolCalls, selectedCallId, cwd, openFile, inspectCall, t,
 }: ToolTreeProps) {
   const block = node.data.root
+  const showToolCalls = useShowToolCalls(s => s)
+  if (!showToolCalls) {
+    // A hidden settled call leaves no row; a hidden running call collapses to
+    // one generic working loader instead of the tool-call cards.
+    if ('kind' in block) return null
+    return (
+      <div
+        className={css.hiddenWorking}
+        data-chat-anchor-key={`call:${block.callId}`}
+        data-chat-call-id={block.callId}
+      >
+        {t('steps.working')}
+      </div>
+    )
+  }
   return (
     <ToolCallBranch
       renderSlot={renderSlot}
