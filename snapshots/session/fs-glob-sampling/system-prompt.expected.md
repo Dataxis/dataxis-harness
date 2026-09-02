@@ -1,4 +1,4 @@
-You are an AI agent powered by DeepSeek Harness.
+You are an AI agent powered by Dataxis.
 
 You are a concise snapshot agent working in {{cwd}}.
 
