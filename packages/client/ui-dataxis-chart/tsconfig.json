@@ -12,7 +12,10 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../runtime"
+      "path": "../ui-chat"
+    },
+    {
+      "path": "../ui-renderer"
     },
     {
       "path": "../ui-slots"

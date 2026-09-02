@@ -4,7 +4,9 @@
  * @module @deepseek-ai/dsh-client-ui-dataxis-chart/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { ChartCard } from './ChartCard.tsx'
 
 /** Required services for the toolview registration. */
