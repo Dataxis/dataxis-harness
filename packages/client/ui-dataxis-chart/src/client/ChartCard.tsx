@@ -325,7 +325,7 @@ function PieChart({ chartType, labels, series, colors, hidden, onShow, onHide }:
     }
   }
   let angle = -Math.PI / 2
-  const slices = idx.map(i => {
+  const slices = idx.map((i) => {
     const v = values[i]!
     const frac = total > 0 ? v / total : 0
     const a0 = angle
@@ -378,7 +378,7 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
   const show = useCallback((title: string, rows: TipRow[]): void => { setTip({ title, rows }) }, [])
   const hide = useCallback((): void => { setTip(null) }, [])
   const toggle = useCallback((name: string): void => {
-    setHidden(h => {
+    setHidden((h) => {
       const n = { ...h }
       n[name] = !n[name]
       return n
