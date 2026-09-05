@@ -416,7 +416,7 @@ describe('ProducedFiles row', () => {
     }
   }
 
-  it('renders the bounded CSS candidates and opens a file or the workspace folder', () => {
+  it('renders every produced file as a chip and opens a file or the workspace folder', () => {
     const paths = ['deep/a.html', 'b.css', 'c.ts', 'd.ts', 'e.ts', 'f.ts', 'g.ts', 'h.ts']
     const openFile = vi.fn<(path: string) => void>()
 
@@ -426,12 +426,12 @@ describe('ProducedFiles row', () => {
     expect(view.getByText('产物')).toBeTruthy()
     const row = view.container.querySelector('[data-produced-files-row]')
     if (!(row instanceof HTMLElement)) throw new Error('produced row missing')
-    expect(within(row).getAllByRole('button')).toHaveLength(6)
-    expect(within(row).getByText('+ 2 个文件')).toBeTruthy()
+    // No truncation: every path renders as its own chip; no remainder counter.
+    expect(within(row).getAllByRole('button')).toHaveLength(8)
     const chip = view.getByRole('button', { name: '打开 deep/a.html' })
     expect(chip.textContent).toBe('a.html')
     expect(chip.getAttribute('title')).toBe('deep/a.html')
-    expect(view.queryByRole('button', { name: '打开 g.ts' })).toBeNull()
+    expect(view.getByRole('button', { name: '打开 g.ts' })).toBeTruthy()
     fireEvent.click(chip)
     expect(openFile).toHaveBeenCalledWith('deep/a.html')
 
@@ -440,7 +440,7 @@ describe('ProducedFiles row', () => {
     expect(openFile).toHaveBeenLastCalledWith('.')
   })
 
-  it('keeps the folder action absent without overflow or a local native opener', () => {
+  it('keeps the folder action absent for a single file or without a local native opener', () => {
     const openFile = vi.fn<(path: string) => void>()
     const view = render(
       <ProducedFiles matched={['a.md']} openFile={openFile} {...capability(true)} t={t} />,
@@ -453,7 +453,7 @@ describe('ProducedFiles row', () => {
     }
   })
 
-  it('uses singular English copy when exactly one file is hidden', () => {
+  it('renders every file as a chip when there are many — no remainder counter', () => {
     const view = render(
       <ProducedFiles
         matched={['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md']}
@@ -464,7 +464,8 @@ describe('ProducedFiles row', () => {
     )
     const row = view.container.querySelector('[data-produced-files-row]')
     if (!(row instanceof HTMLElement)) throw new Error('produced row missing')
-    expect(within(row).getByText('+ 1 file')).toBeTruthy()
+    expect(within(row).getAllByRole('button')).toHaveLength(7)
+    expect(within(row).queryByText('+ 1 file')).toBeNull()
   })
 })
 
