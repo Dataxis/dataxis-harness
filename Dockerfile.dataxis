@@ -1,0 +1,218 @@
+# Dataxis dsh service — the Dataxis data platform as a `dataxis` profile.
+#
+# Same base as web/: the harness web GUI behind Caddy basic-auth, but boots
+# `dsh --profile dataxis`, which layers the Dataxis MSSQL MCP (readonly), the
+# Tableau MCP client, the catalogue MCP, and the Dataxis skills on top of the
+# stock web profile. Secrets arrive at runtime from Railway env vars and are
+# materialized into .plugin-data/dataxis.env by /entrypoint.sh — never baked
+# into the image.
+
+FROM node:24-bookworm-slim
+
+# Caddy (auth reverse proxy) + bash/bubblewrap (DSH sandbox) + python3 (the
+# MSSQL OTel trace proxy and the catalogue MCP).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates git gnupg debian-keyring \
+      bash bubblewrap python3 \
+ && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+      | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+ && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+      | tee /etc/apt/sources.list.d/caddy-stable.list \
+ && apt-get update && apt-get install -y caddy \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
+
+WORKDIR /app
+
+# Public DeepSeek Harness fork. `DSH_REF` is the branch discovery ref; the
+# build is pinned to `DSH_SHA` so a stale image can never silently clone a
+# newer commit (Railway caches the clone layer keyed on this RUN). Bump DSH_SHA
+# whenever the fork's dataxis-dev branch advances. GH_TOKEN (Railway BUILD
+# secret) authenticates the clone — anonymous git is 401'd from Railway's
+# shared IPs; falls back to anonymous when unset.
+ARG GH_TOKEN
+ARG DSH_REF=dataxis-dev
+ARG DSH_SHA=73414d4b14dc340b7fd64a22a7f8da2c22b45ae1
+RUN url="https://github.com/Dataxis/dataxis-harness.git"; \
+    if [ -n "${GH_TOKEN}" ]; then \
+      url="https://x-access-token:${GH_TOKEN}@github.com/Dataxis/dataxis-harness.git"; \
+    fi; \
+    git clone --depth 1 --branch "${DSH_REF}" "$url" /app \
+  && git -C /app fetch --depth 1 origin "${DSH_SHA}" \
+  && git -C /app checkout "${DSH_SHA}" \
+  && git -C /app remote set-url origin https://github.com/Dataxis/dataxis-harness.git
+
+RUN pnpm install --frozen-lockfile
+# Full build: the web frontend resolves @deepseek-ai/* through package.json
+# exports pointing at built lib/ artifacts, so build:lib must run first.
+# Only build:lib:host sets --max-old-space-size=4096; raise the ceiling for the
+# client tsc pass and the Vite web build too (scoped to this RUN, not the image).
+RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm run build
+
+# Private Dataxis data (skills, bin, profile scaffold). Railway's Docker build
+# context is the service root directory; guard both layouts so this never
+# depends on whether the context is dataxis/ or the repo root.
+COPY . /src/context/
+RUN if [ -d /src/context/dataxis-universal ]; then \
+      cp -r /src/context/dataxis-universal /app/dataxis-universal; \
+    elif [ -d /src/context/dataxis/dataxis-universal ]; then \
+      cp -r /src/context/dataxis/dataxis-universal /app/dataxis-universal; \
+    else \
+      echo "dataxis-universal not found in build context" >&2; exit 1; \
+    fi \
+ && rm -rf /src/context \
+ && chmod +x /app/dataxis-universal/bin/*.sh /app/dataxis-universal/bin/mcp-trace-proxy.py
+
+# Vendor the MSSQL MCP server so launch-mssql.sh runs offline (no npx fetch).
+# A minimal package.json gives npm a manifest; drop --silent so failures are
+# visible, and retry once for transient registry failures. Then patch the
+# bundled connection config to force TLS + trust (Cloud SQL needs encryption
+# but its self-signed cert / bare-IP SNI makes plain `encrypt` fail).
+RUN mkdir -p /app/dataxis-universal/.plugin-data \
+ && cd /app/dataxis-universal/.plugin-data \
+ && printf '%s\n' '{"name":"dataxis-plugin-data","private":true}' > package.json \
+ && ( npm install --no-save --no-audit --no-fund @wener/mssql-mcp@1.0.1 \
+      || ( sleep 5 && npm install --no-save --no-audit --no-fund @wener/mssql-mcp@1.0.1 ) ) \
+ && node /app/dataxis-universal/bin/patch-mssql-tls.mjs \
+      /app/dataxis-universal/.plugin-data/node_modules/@wener/mssql-mcp/dist/main.mjs
+
+# Co-located Tableau MCP server — runs beside the web GUI in this container on
+# 127.0.0.1:3927, so the Tableau tools are available immediately without a
+# separate service or cross-service networking. It authenticates to Tableau
+# Cloud with a PAT (SERVER/SITE_NAME/PAT_NAME/PAT_VALUE from Railway env vars).
+RUN npm install --global @tableau/mcp-server@4.3.2
+
+ENV DSH_HOME=/root/.dsh
+
+# The DSH file sandbox (bwrap/landlock) cannot run inside Railway's Docker
+# containers — the default seccomp profile blocks the user-namespace syscalls
+# bwrap needs. Run unconfined instead; the container boundary is the sandbox.
+# NOTE: `danger-full-access` disables BOTH the file sandbox and approval
+# prompts (approval: never). (Overridable from Railway variables if a sandbox
+# backend ever becomes usable.)
+ENV DSH_PERMISSION_MODE=danger-full-access
+
+# Install the `dataxis` profile: bundle list (dsh-base + dsh-web-app) + patch.
+# dshmarket is added by the CLI step below, which also heals the profile's
+# module-fallback links to the harness' @deepseek-ai/* packages.
+RUN mkdir -p "$DSH_HOME/profiles/dataxis" \
+ && cp /app/dataxis-universal/dsh/profile-dataxis/package.json \
+       /app/dataxis-universal/dsh/profile-dataxis/cordis.yml \
+       /app/dataxis-universal/dsh/profile-dataxis/pnpm-workspace.yaml \
+       "$DSH_HOME/profiles/dataxis/"
+
+# Dataxis skills → $DSH_HOME/skills (a default-discovered root). The web bundle
+# DISABLES the host skill-filesystem row (presets own local discovery), so a
+# `customSkillDirs` override on it is a no-op — copying into a root the
+# `standard` preset already scans is the supported path.
+RUN mkdir -p "$DSH_HOME/skills" && cp -r /app/dataxis-universal/skills/* "$DSH_HOME/skills/"
+
+# End-customer persona: build a `dataxis-customer` agent preset from the shipped
+# `standard` one (the preset shadows the host persona, so this is what actually
+# reaches the model), then the profile patch below defaults dataxis to it.
+RUN node /app/dataxis-universal/bin/make-customer-preset.mjs \
+      /app/packages/preset/agent-presets/presets/standard/agent.cordis.yml \
+      "$DSH_HOME/.agent-presets/dataxis-customer"
+
+# The Dataxis patch layer: MSSQL (stdio) + Tableau (streamable-http) +
+# catalogue (stdio, python3) MCP rows. TABLEAU_URL resolves at runtime from the env.
+RUN cat > "$DSH_HOME/profiles/dataxis/cordis.patch.yml" <<'EOF'
+- insert:
+    - id: dataxis-mcp-mssql
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: stdio
+        serverName: mssql
+        command: '/app/dataxis-universal/bin/launch-mssql.sh'
+        args:
+          - --env-file
+          - '/app/dataxis-universal/.plugin-data/dataxis.env'
+        cwd: '/app/dataxis-universal'
+        env:
+          PLUGIN_ROOT: '/app/dataxis-universal'
+          PLUGIN_DATA: '/app/dataxis-universal/.plugin-data'
+          OTEL_SERVICE_NAME: mcp-mssql
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          CONSOLA_LEVEL: '-999'
+          APX_TRACE_TARGET: mssql
+          APX_TRACE_CAPTURE_ARGS: 'false'
+          APX_PROXY_LOG: '/app/dataxis-universal/.plugin-data/logs'
+        failOnStartupError: false
+
+    - id: dataxis-mcp-tableau
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: streamable-http
+        serverName: tableau
+        url: !!js process.env.TABLEAU_URL ?? 'http://127.0.0.1:3927/tableau-mcp'
+        headers: {}
+        failOnStartupError: false
+
+    - id: dataxis-mcp-catalog
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: stdio
+        serverName: dataxis-catalog
+        command: 'python3'
+        args:
+          - '/app/dataxis-universal/catalogue/catalog_serve.py'
+          - '--catalog'
+          - '/app/dataxis-universal/catalogue/catalog.okf'
+        cwd: '/app/dataxis-universal/catalogue'
+        failOnStartupError: false
+
+    - id: chart
+      name: '@dataxis/dsh-chart'
+
+# The plugin-package inventory request extension (base bundle, default-on)
+# resolves every active entry's package.json on each model request and fails
+# the turn with `REQUEST_EXTENSION` when one cannot be resolved — the bare
+# @dataxis/dsh-chart symlink and any startup-failed MCP row are exactly the
+# entries that trip it. It is non-essential request metadata; disable it so
+# turns never die on plugin-resolution.
+- id: plugin-package-inventory-deepseek
+  disabled: true
+
+# Default sessions in this profile to the customer-facing preset (compact,
+# jargon-free answers for end-customers). This replaces the web bundle's
+# `default: standard`; the shipped config/agent-presets root is injected by
+# apps/cli's composeProfile, and the $DSH_HOME/.agent-presets user root comes
+# from dsh-agent-presets' includeUserRoot default.
+- id: agent-presets
+  config:
+    default: dataxis-customer
+EOF
+
+# Plugin Market (dshmarket) — same community installer the web service ships,
+# added to the `dataxis` profile so Settings → Plugin Market appears here too.
+# The CLI step is the supported path: it heals the profile's module fallback and
+# retries peer resolution with auto-install-peers off for the @deepseek-ai/*
+# peers that the runtime injects and npm does not carry. `@latest` follows the
+# community release stream instead of pinning (the market self-updates anyway,
+# and a stale pin is what this replaced).
+RUN node --import tsx/esm apps/cli/src/bin.ts plugin --profile dataxis add dshmarket@latest
+
+# Local DSH plugin: generate a self-contained interactive HTML chart file into
+# the workspace (surfaces in the web UI's "Produced" row with a Download button).
+# Bare row names in a PROFILE resolve from $DSH_HOME/profiles/<name>/, not the
+# checkout, so symlink the plugin into the profile's node_modules (placed after
+# the dshmarket install, which creates that node_modules tree).
+RUN mkdir -p "$DSH_HOME/profiles/dataxis/node_modules/@dataxis" \
+ && ln -s /app/dataxis-universal/dsh-plugins/chart "$DSH_HOME/profiles/dataxis/node_modules/@dataxis/dsh-chart"
+
+# Caddyfile (basic-auth reverse proxy).
+RUN mkdir -p /etc/caddy
+RUN cat > /etc/caddy/Caddyfile <<'EOF'
+:{$PORT} {
+    basic_auth {
+        {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+    }
+    reverse_proxy 127.0.0.1:3080
+}
+EOF
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]
