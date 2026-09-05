@@ -1,8 +1,9 @@
-// Web e2e scenario: the single-line produced-files summary a finished turn
-// ends with. Cold-seeds ten writes (zero model calls), then verifies the real
-// assembled lane adapts from a coarse width budget and keeps a capability-gated folder handoff.
-// The folder request is intercepted so one real browser click can exercise
-// the full client carrier without launching a native application in CI.
+// Web e2e scenario: the produced-files row a finished turn ends with.
+// Cold-seeds ten writes (zero model calls), then verifies every produced file
+// renders as its own chip — the row wraps instead of truncating — and keeps a
+// capability-gated folder handoff. The folder request is intercepted so one
+// real browser click can exercise the full client carrier without launching a
+// native application in CI.
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -127,7 +128,7 @@ describe('web e2e: a finished turn ends with the files it produced', () => {
     await scaffold?.close()
   })
 
-  it.skipIf(MODE === 'record')('adapts a ten-file summary without leaving one line', async () => {
+  it.skipIf(MODE === 'record')('renders all ten produced files as chips across widths', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-produced-files'))
     const groupRow = page.locator('[role="treeitem"]').first()
     await groupRow.waitFor({ timeout: 15_000 })
@@ -140,15 +141,15 @@ describe('web e2e: a finished turn ends with the files it produced', () => {
     const row = page.locator('[data-produced-files-row]')
     await row.waitFor({ timeout: 15_000 })
     const chips = row.getByRole('button')
-    await expect.poll(() => chips.count()).toBe(6)
-    await expect.poll(() => row.getByText('+ 4 files', { exact: true }).isVisible()).toBe(true)
-
-    await page.setViewportSize({ width: 780, height: 900 })
-    await expect.poll(() => chips.count()).toBe(5)
+    // Every produced file renders as its own chip; the row wraps instead of
+    // truncating behind a remainder counter.
+    await expect.poll(() => chips.count()).toBe(10)
     expect(await chips.nth(0).innerText()).toBe('关于我.md')
     expect(await chips.nth(1).innerText()).toBe('index.html')
+
+    await page.setViewportSize({ width: 780, height: 900 })
+    await expect.poll(() => chips.count()).toBe(10)
     expect(await chips.nth(4).innerText()).toBe('app.ts')
-    await expect.poll(() => row.getByText('+ 5 files', { exact: true }).isVisible()).toBe(true)
     const showFolder = page.getByRole('button', { name: 'Show in folder', exact: true })
     expect(await showFolder.count()).toBe(1)
     expect(await page.getByText('Produced', { exact: true }).count()).toBe(1)
@@ -167,9 +168,7 @@ describe('web e2e: a finished turn ends with the files it produced', () => {
       openPath.mockRestore()
     }
 
-    const tops = await row.locator(':scope > *:visible').evaluateAll(elements =>
-      elements.map(element => element.getBoundingClientRect().top))
-    expect(new Set(tops.map(top => Math.round(top))).size).toBe(1)
+    // The wrapped row never scrolls horizontally, even with ten chips.
     const geometry = await row.evaluate(element => ({
       clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
     }))
