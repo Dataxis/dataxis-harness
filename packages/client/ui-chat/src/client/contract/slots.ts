@@ -36,6 +36,7 @@ export interface TurnTailOwnerProps {
   turn: TurnLocation
   seq: number
   openFile: (path: string) => void
+  downloadFile: (path: string) => void
 }
 
 /** Owner currency of finalized-assistant actions. */
@@ -75,6 +76,7 @@ export interface ChatNodeOwnerProps {
   selectedCallId?: ToolCallId | undefined
   cwd?: string | undefined
   openFile: (path: string) => void
+  downloadFile: (path: string) => void
   inspectCall: (callId: ToolCallId) => void
   forkAt: (seq: number) => void
   /**
@@ -141,6 +143,7 @@ export interface ChatViewInjected {
   }
   openDetails: (target: SelectionTarget) => void
   openFile: (path: string) => Promise<void>
+  downloadFile: (path: string) => void
   loadOlder: () => void
   /** Jump loader: page history back through seq; resolves when the window covers it. */
   loadThrough: (seq: SessionSeq) => Promise<void>

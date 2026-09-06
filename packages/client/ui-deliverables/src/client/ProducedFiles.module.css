@@ -56,6 +56,34 @@
   cursor: pointer;
 }
 
+/* One chip plus its download button, kept on one visual row. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Download affordance for artifacts that cannot usefully be opened. */
+.download {
+  box-sizing: border-box;
+  flex: none;
+  margin: 0;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.download:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 .file:hover {
   color: var(--dsw-alias-label-primary);
   text-decoration: underline;

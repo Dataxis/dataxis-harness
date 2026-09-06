@@ -16,6 +16,7 @@
     { "path": "../../util/brand" },
     { "path": "../../core/session" },
     { "path": "../../interaction/commands" },
+    { "path": "../../fs/fs" },
     { "path": "../../session/session-persistence" },
     { "path": "../session-query" }
   ]

@@ -126,6 +126,15 @@ export function apply(ctx: Context): void {
             })
             if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
           },
+          downloadFile: (path) => {
+            const url = new URL('/api/workspace.file', globalThis.location.origin)
+            url.searchParams.set('sessionId', sessionId)
+            url.searchParams.set('path', path)
+            const anchor = document.createElement('a')
+            anchor.href = url.toString()
+            anchor.download = ''
+            anchor.click()
+          },
           loadOlder: () => { void session.loadOlder() },
           loadThrough: seq => session.loadThrough(seq),
           loadImage: Object.assign(

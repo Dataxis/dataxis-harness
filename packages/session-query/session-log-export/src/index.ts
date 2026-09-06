@@ -4,6 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-attachment'
+import type { FsInfo, FsTarget } from '@deepseek-ai/dsh-fs'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
@@ -40,6 +41,9 @@ export const inject = ['commands', 'connection']
 
 /** Stable browser download path retained across the transport migration. */
 export const SESSION_LOG_EXPORT_PATH = '/api/session.export'
+
+/** Stable browser path for produced-workspace-file downloads. */
+export const WORKSPACE_FILE_PATH = '/api/workspace.file'
 
 /** Session-log archive policy. */
 export interface Config {
@@ -90,6 +94,16 @@ export function apply(ctx: Context, config: Config = {}): void {
         request,
         config.compressionLevel ?? DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
       )
+      if (request.method === 'GET') return response
+      await response.body?.cancel()
+      return new Response(null, { status: response.status, headers: response.headers })
+    },
+  })
+  connectionOf(ctx).fetch.register({
+    path: WORKSPACE_FILE_PATH,
+    methods: ['GET', 'HEAD'],
+    fetch: async (request) => {
+      const response = await workspaceFileResponse(ctx, request)
       if (request.method === 'GET') return response
       await response.body?.cancel()
       return new Response(null, { status: response.status, headers: response.headers })
@@ -162,4 +176,96 @@ async function sessionLogExportResponse(
     },
   )
   return response
+}
+
+/** Maximum workspace-file byte size served by one download. */
+const WORKSPACE_FILE_MAX_BYTES = 10 * 1024 * 1024
+
+/** MIME types for the common workspace-file extensions a download may serve. */
+const WORKSPACE_FILE_CONTENT_TYPES: Readonly<Record<string, string>> = {
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.json': 'application/json',
+  '.csv': 'text/csv',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+}
+
+/** The session-store slice the workspace-file download reads the owning cwd from. */
+interface WorkspaceSessionsSurface {
+  get(id: SessionId): { header: { cwd?: string } } | undefined
+}
+
+/** The filesystem slice the workspace-file download reads through. */
+interface WorkspaceFileSystemSurface {
+  resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<FsTarget>
+  contains(parent: FsTarget, child: FsTarget): boolean
+  stat(target: FsTarget, signal?: AbortSignal): Promise<FsInfo | undefined>
+  readBytes(target: FsTarget, signal: AbortSignal | undefined, maxBytes: number): Promise<Uint8Array>
+}
+
+function workspaceFileContentType(path: string): string {
+  const dot = path.lastIndexOf('.')
+  return dot === -1
+    ? 'application/octet-stream'
+    : WORKSPACE_FILE_CONTENT_TYPES[path.slice(dot).toLowerCase()] ?? 'application/octet-stream'
+}
+
+function workspaceFileBasename(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1).replace(/"/g, '')
+}
+
+/**
+ * Stream one produced workspace file as an attachment. The path is the exact
+ * workspace-relative (or cwd-absolute) display path the producing tool logged;
+ * it resolves against the session cwd and refuses anything outside that root.
+ * @param ctx - Host context carrying the sessions and fs services.
+ * @param request - the browser GET/HEAD request carrying sessionId and path.
+ * @returns the attachment response; 400 on a missing query, 404 on an unknown
+ * session or absent file, 403 on a path escaping the workspace, 500 otherwise.
+ */
+async function workspaceFileResponse(ctx: Context, request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const sessionIdValue = url.searchParams.get('sessionId')
+  const path = url.searchParams.get('path')
+  if (sessionIdValue === null || sessionIdValue === '' || path === null || path === '') {
+    return new Response('missing sessionId or path query parameter', { status: 400 })
+  }
+  const sessionId = brandString<SessionId>(sessionIdValue)
+  const fs = ctx.get('fs') as WorkspaceFileSystemSurface | undefined
+  const sessions = ctx.get('sessions') as WorkspaceSessionsSurface | undefined
+  if (fs === undefined || sessions === undefined) {
+    return new Response('workspace file download is unavailable: missing fs or sessions service', { status: 500 })
+  }
+  const session = sessions.get(sessionId)
+  if (session === undefined || session.header.cwd === undefined) {
+    return new Response('workspace file download failed: unknown session', { status: 404 })
+  }
+  try {
+    const cwdTarget = await fs.resolve(session.header.cwd, { signal: request.signal })
+    const fileTarget = await fs.resolve(path, { cwd: session.header.cwd, signal: request.signal })
+    if (!fs.contains(cwdTarget, fileTarget)) {
+      return new Response('workspace file download failed: path escapes the workspace', { status: 403 })
+    }
+    const info = await fs.stat(fileTarget, request.signal)
+    if (info === undefined || info.type !== 'file') {
+      return new Response('workspace file download failed: not a file', { status: 404 })
+    }
+    const bytes = await fs.readBytes(fileTarget, request.signal, WORKSPACE_FILE_MAX_BYTES)
+    return new Response(bytes as BodyInit, {
+      status: 200,
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': workspaceFileContentType(path),
+        'content-disposition': `attachment; filename="${workspaceFileBasename(path)}"`,
+      },
+    })
+  } catch {
+    return new Response('workspace file download failed', { status: 500 })
+  }
 }

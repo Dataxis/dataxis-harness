@@ -17,8 +17,8 @@ export interface ProducedFilesInjected {
   }
 }
 
-/** Matched paths plus the opener, locale, and injected Host capability. */
-export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
+/** Matched paths plus the opener, downloader, locale, and injected Host capability. */
+export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile' | 'downloadFile'> & {
   matched: readonly string[]
 } & PropsLocale<typeof NS> & InjectFace<ProducedFilesInjected>
 
@@ -30,7 +30,7 @@ export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
  * @returns The produced-files row.
  */
 export function ProducedFiles({
-  matched: paths, openFile, isLoopback, ensureWorkspacePathOpen, useWorkspacePathOpen, t,
+  matched: paths, openFile, downloadFile, isLoopback, ensureWorkspacePathOpen, useWorkspacePathOpen, t,
 }: ProducedFilesProps) {
   useEffect(() => { ensureWorkspacePathOpen() }, [ensureWorkspacePathOpen])
   const hostCanOpenPath = useWorkspacePathOpen(available => available === true)
@@ -41,18 +41,27 @@ export function ProducedFiles({
       <div className={css.lane}>
         <div className={css.row} data-produced-files-row>
           {paths.map(path => (
-            <button
-              key={path}
-              type="button"
-              className={css.file}
-              // The full path is the disambiguator when two turns produce files
-              // that share a basename; the chip itself stays short.
-              title={path}
-              aria-label={t('produced.open', { name: path })}
-              onClick={() => { openFile(path) }}
-            >
-              {basename(path)}
-            </button>
+            <span key={path} className={css.chip}>
+              <button
+                type="button"
+                className={css.file}
+                // The full path is the disambiguator when two turns produce files
+                // that share a basename; the chip itself stays short.
+                title={path}
+                aria-label={t('produced.open', { name: path })}
+                onClick={() => { openFile(path) }}
+              >
+                {basename(path)}
+              </button>
+              <button
+                type="button"
+                className={css.download}
+                aria-label={t('produced.download', { name: path })}
+                onClick={() => { downloadFile(path) }}
+              >
+                ↓
+              </button>
+            </span>
           ))}
         </div>
         {paths.length > 1 && canOpenPath && (
