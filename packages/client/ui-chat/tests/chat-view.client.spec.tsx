@@ -247,6 +247,7 @@ function makeHarness(
   )
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
+  const downloadFile = vi.fn<(path: string) => void>()
   const loadOlder = vi.fn()
   const loadThrough = vi.fn<(seq: number) => Promise<void>>().mockResolvedValue(undefined)
   // Mutable outline holder: tests swap the value and drive a re-render via set().
@@ -394,6 +395,7 @@ function makeHarness(
     completeViewRequest: () => {},
     openDetails,
     openFile,
+    downloadFile,
     loadOlder,
     loadThrough,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
