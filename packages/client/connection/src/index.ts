@@ -81,12 +81,15 @@ export interface ConnectionConfig {
   cookieMaxAgeDays?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+  /** Disable the browser-session cookie/token layer (the deployment's own edge, e.g. Caddy basic-auth, is the only gate). Default: true. */
+  browserAuth?: boolean
 }
 
 export const Config: z<ConnectionConfig> = z.object({
   trustedHosts: z.array(String).default([]),
   cookieMaxAgeDays: z.natural().min(1).default(30),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
+  browserAuth: z.boolean().default(true),
 })
 
 /**
@@ -101,6 +104,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   const trustedHosts = config?.trustedHosts ?? []
   const cookieMaxAgeDays = config?.cookieMaxAgeDays ?? 30
   const maxRequestBodyBytes = config?.maxRequestBodyBytes ?? DEFAULT_MAX_REQUEST_BODY_BYTES
+  const browserAuth = config?.browserAuth ?? true
   // Config boundary: a malformed entry fails the load loudly here rather than
   // silently authorizing its hostname prefix at request time.
   for (const entry of trustedHosts) assertTrustedAuthority(entry)
@@ -108,7 +112,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
   const connection = new HostConnectionService(
     ctx,
     trustedHosts,
-    await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    browserAuth ? await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays) : undefined,
   )
   const fetchHandler = connection.createSharedFetchHandler(API_PATH)
   const route: WebRoute = {

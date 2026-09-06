@@ -167,6 +167,10 @@
         # A deployment adding authorities keeps this expression and concatenates
         # its literals, for example: ['app.internal', ...ctx.webRuntime.trustedHosts].
         trustedHosts: !!js ctx.webRuntime.trustedHosts
+        # Browser-session auth defaults on; a reverse-proxy deployment with its
+        # own edge auth (Caddy basic-auth) sets DSH_BROWSER_AUTH=false to drop
+        # the launch-token/cookie layer entirely.
+        browserAuth: !!js process.env.DSH_BROWSER_AUTH !== 'false'
 
     - id: api-remotes
       name: '@deepseek-ai/dsh-api-remotes'
