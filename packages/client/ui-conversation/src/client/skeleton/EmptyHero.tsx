@@ -3,7 +3,7 @@
 
 import type { ReactNode, RefObject } from 'react'
 import {
-  FishLogo, IconChevronDownOutline14, IconFolderClose16, IconFolderOpen16,
+  DataxisLogo, IconChevronDownOutline14, IconFolderClose16, IconFolderOpen16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 import type { ConversationSlotProps } from '../contract/slots.ts'
@@ -72,7 +72,7 @@ export interface HeroShellProps {
 
 
 /**
- * Render the hero chrome (headline only; no composer, no workspace row).
+ * Render the hero chrome (brand wordmark only; no composer, no workspace row).
  * @param props - see {@link HeroShellProps}.
  * @returns the centered hero element tree.
  */
@@ -80,16 +80,12 @@ export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
   return (
     <div className={css.root}>
       <div className={css.stack}>
-        <div className={css.headline}>
-          <span className={css.fishHitbox}>
-            {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.fish }, {
-              fallback: <FishLogo size={34} className={css.fish} />,
+        <div className={css.brand}>
+          <span className={css.brandName} role="img" aria-label={t('hero.brandLabel')}>
+            {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.wordmark }, {
+              fallback: <DataxisLogo size={34} className={css.wordmark} />,
             })}
           </span>
-          <span className={css.headlineText}>
-            {t('hero.headline')}
-          </span>
-          <span className={css.previewBadge}>{t('hero.preview')}</span>
         </div>
         <div className={css.body}>
           {/* The composer remains mounted outside this component. */}

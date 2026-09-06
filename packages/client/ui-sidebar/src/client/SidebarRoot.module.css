@@ -153,6 +153,13 @@
   letter-spacing: 0.04em;
 }
 
+/* The default expanded brand is the Dataxis product wordmark (no monogram
+   tile). Letters ride the brand ink; "AGENT" stays brand orange in the svg. */
+.brandWordmark {
+  display: block;
+  color: var(--dsw-alias-label-primary);
+}
+
 .fallbackBrandName {
   font-size: 17px;
   letter-spacing: 0px;

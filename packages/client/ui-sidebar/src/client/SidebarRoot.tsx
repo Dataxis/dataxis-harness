@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip,
+  DataxisLogo, FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SidebarRootComponentProps } from './contract/slots.ts'
 import css from './SidebarRoot.module.css'
@@ -123,6 +123,14 @@ export function SidebarRoot({
 
   const buildVersion = localBuildVersion()
 
+  // The expanded brand row is the Dataxis product wordmark by default. Slot
+  // occupants (official/alternate brand plugins) override it; when neither is
+  // occupied the shell renders the wordmark alone — no monogram tile, no
+  // local-build label or version chip.
+  const wideBrandMark = wide ? renderSlot('sidebar.brand.mark', { size: 24 }) : null
+  const wideBrandName = wide ? renderSlot('sidebar.brand.name', {}) : null
+  const defaultBrand = wideBrandMark == null && wideBrandName == null
+
   return (
     <div
       ref={column}
@@ -147,23 +155,25 @@ export function SidebarRoot({
             aria-label={t('session.new.label')}
             onClick={() => { startSession() }}
           >
-            <span className={css.brandIdentity} aria-hidden="true">
-              <span className={css.brandMark}>
-                {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
-              </span>
-              <span className={css.brandName}>
-                {renderSlot('sidebar.brand.name', {}, {
-                  fallback: buildVersion === undefined
+            {defaultBrand ? (
+              <DataxisLogo size={20} className={css.brandWordmark} />
+            ) : (
+              <span className={css.brandIdentity} aria-hidden="true">
+                <span className={css.brandMark}>
+                  {wideBrandMark ?? <FishLogo size={24} />}
+                </span>
+                <span className={css.brandName}>
+                  {wideBrandName ?? (buildVersion === undefined
                     ? <span className={css.fallbackBrandName}>{t('brand.localBuild')}</span>
                     : (
                       <span className={css.localBuildBrand}>
                         <span className={css.localBuildTitle}>{t('brand.localBuild')}</span>
                         <span className={css.buildVersion}>{buildVersion}</span>
                       </span>
-                    ),
-                })}
+                    ))}
+                </span>
               </span>
-            </span>
+            )}
           </button>
         )}
         {/* Rail resting state is the whale mark; hovering swaps in the panel
