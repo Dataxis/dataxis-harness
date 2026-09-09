@@ -256,7 +256,7 @@ function renderValue(value: JsonValue): string {
 }
 
 /** Canonical value returned by the outer PTC mode transport. */
-type RunCodeOutput = { logs: string[]; result?: JsonValue }
+type RunCodeOutput = { logs: string[]; result?: JsonValue; producedFiles?: string[] }
 
 /**
  * Registry-private capabilities the bridge receives at construction — the
@@ -316,6 +316,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
         properties: {
           logs: { type: 'array', required: true, items: { type: 'string' } },
           result: { type: 'json' },
+          producedFiles: { type: 'array', items: { type: 'string' } },
         },
       },
       render: (_args, value) => {
@@ -323,12 +324,20 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
         const parts = [value.logs.join('\n'), rendered].filter(part => part.length > 0)
         return [{ type: 'text', text: parts.length > 0 ? parts.join('\n') : '(run_code completed with no output)' }]
       },
+      presentationMeta: (_args, value) => {
+        const files = (value as RunCodeOutput).producedFiles ?? []
+        return files.length > 0 ? { producedFiles: files } : {}
+      },
     },
     async execute(args, exec): Promise<RunCodeOutput> {
       if (args.description.trim().length === 0) {
         throw new Error('invalid description: expected a non-empty string')
       }
       const runtime = requireRuntime()
+      // Child calls that project a meta.producedFiles (e.g. render_chart) are
+      // collected here and re-published on the run_code result, so parallel
+      // dispatch still registers produced files on the top-level tool/result.
+      const producedFiles: string[] = []
 
       // The run-scoped abort: follows the outer signal in, and fires when the
       // run settles for ANY reason, so an in-flight sub-dispatch is aborted
@@ -493,6 +502,15 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
             resolve(result.isError
               ? { isError: true, message: result.error.message }
               : { isError: false, value: result.value })
+            if (!result.isError && result.meta !== undefined
+              && typeof result.meta === 'object' && result.meta !== null && !Array.isArray(result.meta)) {
+              const files = (result.meta as Record<string, unknown>).producedFiles
+              if (Array.isArray(files)) {
+                for (const file of files) {
+                  if (typeof file === 'string' && file.length > 0) producedFiles.push(file)
+                }
+              }
+            }
             const agent = exec.agent
             if (agent === undefined) return
             const task: Promise<void> = (async () => {
@@ -640,6 +658,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
         return {
           logs: result.logs,
           ...result.value !== undefined ? { result: result.value } : {},
+          ...producedFiles.length > 0 ? { producedFiles } : {},
         }
       } finally {
         exec.signal.removeEventListener('abort', onOuterAbort)

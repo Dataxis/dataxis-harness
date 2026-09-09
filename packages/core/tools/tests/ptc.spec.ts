@@ -838,7 +838,7 @@ describe('the run_code dispatch bridge', () => {
         arguments: { value: 'two' }, isError: false, content: [{ type: 'text', text: 'echo:two' }],
       },
     ])
-    expect(result.meta).toBeUndefined()
+    expect(result.meta).toEqual({})
   })
 
   it('exposes only an opaque parent token to nested result observers', async () => {
