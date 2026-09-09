@@ -97,6 +97,12 @@ const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
     contextWindow: DEFAULT_CONTEXT_WINDOW,
   },
   {
+    id: 'deepseek-v4.1-flash-expires-on-0910',
+    name: 'Dataxis-fast',
+    description: 'Fast model for routine tasks (temporary alias, expires 2026-09-10).',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+  },
+  {
     id: 'deepseek-v4-pro',
     name: 'DeepSeek-V4-Pro',
     description: 'Stronger agentic coding, knowledge, and difficult reasoning; suited to complex or quality-critical tasks at higher cost.',
@@ -104,7 +110,7 @@ const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
   },
   {
     id: 'deepseek-v4-flash-vision-exp',
-    name: 'DeepSeek-V4-Flash-Vision-Exp',
+    name: 'Dataxis-vision',
     contextWindow: DEFAULT_CONTEXT_WINDOW,
     inputModalities: ['text', 'image'],
     imagePixelBudget: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
