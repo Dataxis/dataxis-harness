@@ -103,6 +103,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Extract produced-file paths from a tool result's `meta.producedFiles`, the
+ * opt-in a third-party mutation tool (e.g. render_chart) publishes so its own
+ * outputs join the Deliverables vocabulary without a first-party call shape.
+ * @param meta - the tool-result `meta` payload.
+ * @returns the file paths, in declaration order.
+ */
+function producedPathsFromMeta(meta: unknown): string[] {
+  if (!isRecord(meta)) return []
+  const files = meta.producedFiles
+  if (!Array.isArray(files)) return []
+  const paths: string[] = []
+  for (const file of files) {
+    const path = pathValue(file)
+    if (path !== null) paths.push(path)
+  }
+  return paths
+}
+
+/**
  * Files produced by one Turn data value.
  *
  * The source is the arguments of successful `write`, `edit`, and mutating
@@ -172,10 +191,15 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
     const result = match.event.data.message.content[0]
     if (result.isError === true) return context.state
     const callId = String(match.event.data.message.source.callId)
-    const path = context.state.calls.get(callId)
-    return path === null || path === undefined
-      ? context.state
-      : { ...context.state, produced: [...context.state.produced, { seq: match.event.seq, path }] }
+    const callPath = context.state.calls.get(callId)
+    const metaPaths = producedPathsFromMeta(match.event.data.meta)
+    const paths = callPath === null || callPath === undefined
+      ? metaPaths
+      : [callPath, ...metaPaths]
+    if (paths.length === 0) return context.state
+    const produced = [...context.state.produced]
+    for (const path of paths) produced.push({ seq: match.event.seq, path })
+    return { ...context.state, produced }
   },
   buildLocationData: (context, scope, previous) => {
     if (scope !== 'turn' || context.state === undefined) return null

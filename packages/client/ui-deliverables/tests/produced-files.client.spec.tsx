@@ -154,10 +154,11 @@ function rawCall(
   )
 }
 
-function result(seq: number, callId: string, isError = false, turn = 1): SessionLiveEventEntry {
+function result(seq: number, callId: string, isError = false, turn = 1, meta?: unknown): SessionLiveEventEntry {
   return at(seq, 'tool/result', {
     turn,
     step: 1,
+    ...(meta === undefined ? {} : { meta }),
     message: {
       source: { type: 'tool-result', callId },
       content: [{ type: 'tool-result', content: [], isError }],
@@ -229,6 +230,18 @@ describe('produced-file Turn data', () => {
       'notes/deleted-text.md',
       'notes/inserted.md',
     ])
+  })
+
+  it('folds third-party produced paths from successful result meta.producedFiles', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      call(2, 'chart', 'render_chart', { title: 'one' }),
+      result(3, 'chart', false, 1, { producedFiles: ['chart-one.html'] }),
+      call(4, 'chart-2', 'render_chart', { title: 'two' }),
+      result(5, 'chart-2', false, 1, { producedFiles: ['chart-two.html', 'chart-two.pdf'] }),
+    ])
+
+    expect(producedForClosing(deliverablesOf(value))).toEqual(['chart-one.html', 'chart-two.html', 'chart-two.pdf'])
   })
 
   it.each([
