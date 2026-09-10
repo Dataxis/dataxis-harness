@@ -1322,6 +1322,28 @@ describe('ChatView', () => {
     expect(members[0]?.getAttribute('hidden')).toBeNull()
   })
 
+  it('keeps presentation tool cards visible when the Turn process folds in compact mode', () => {
+    const h = makeHarness({
+      nodes: [
+        user(1, 'question'),
+        reasoningAssistant(2, 'drawing a chart', 1, 1),
+        toolResult(3, 'chart', 'render_chart'),
+        toolResult(4, 'sql'),
+        assistant(5, 'final answer', 1, 2),
+      ],
+      turnEnds: new Map([[1, 6]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const chartSeat = view.getByTestId('tool-seat-chart')
+    const sqlSeat = view.getByTestId('tool-seat-sql')
+    // render_chart is a presentation tool: its row stays visible outside the fold.
+    expect(chartSeat.closest('[data-turn-process-member]')).toBeNull()
+    expect(chartSeat.closest('[hidden]')).toBeNull()
+    // The ordinary sql tool still folds into the disclosure.
+    expect(sqlSeat.closest('[data-turn-process-member]')).not.toBeNull()
+    expect(sqlSeat.closest('[data-turn-process-member]')!.getAttribute('hidden')).toBe('until-found')
+  })
+
   it('folds injected Context in place with the rest of the Turn process', () => {
     const h = makeHarness({
       nodes: [

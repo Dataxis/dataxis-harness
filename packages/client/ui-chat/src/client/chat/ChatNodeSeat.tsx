@@ -3,7 +3,7 @@ import { JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConversationLocationDataStore, ConversationTurnDataMap } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ChatNodeOwnerProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ChatNode } from '../contract/chat-nodes.ts'
-import { TURN_PROCESS_INDEPENDENT_KINDS } from '../contract/turn-process.ts'
+import { isPresentationTool, TURN_PROCESS_INDEPENDENT_KINDS } from '../contract/turn-process.ts'
 import { storedTurnProcessEntry } from '../stores.ts'
 import { useSearchableHidden } from './searchable-hidden.ts'
 import css from './ChatView.module.css'
@@ -32,6 +32,19 @@ function turnDataOf(node: ChatNode | undefined): ConversationLocationDataStore<C
 function turnOf(node: ChatNode | undefined): number | undefined {
   const location = node?.location
   return location?.kind === 'turn' || location?.kind === 'step' ? location.turn.turn : undefined
+}
+
+/** Tool-call name from a settled or running tool node, when the node is one. */
+function toolCallNameOf(node: ChatNode): string | undefined {
+  if (node.kind !== 'tool-call') return undefined
+  const root = node.data.root
+  return 'kind' in root ? root.call?.name ?? '' : root.name
+}
+
+/** Whether a tool node presents an inline artifact that must stay visible. */
+function isPresentationToolCall(node: ChatNode): boolean {
+  const name = toolCallNameOf(node)
+  return name !== undefined && isPresentationTool(name)
 }
 
 /** Subscribe, apply Turn-process visibility, and dispatch one stable Context key. */
@@ -69,6 +82,7 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
   const processMember = routedNode !== undefined
     && processWindowReady
     && !TURN_PROCESS_INDEPENDENT_KINDS.has(routedNode.kind)
+    && !isPresentationToolCall(routedNode)
     && routedNode.anchorSeq >= processSpec.processStartSeq
     && routedNode.anchorSeq < processSpec.answerAnchorSeq
   const processAnswer = routedNode !== undefined

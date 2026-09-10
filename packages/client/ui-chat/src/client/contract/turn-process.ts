@@ -59,3 +59,16 @@ export function sameTurnProcessSpec(left: TurnProcessSpec, right: TurnProcessSpe
 export function isSubagentDelegationTool(name: string): boolean {
   return name === 'subagent' || name.startsWith('subagent_')
 }
+
+/** Tool names whose card presents a self-contained inline artifact. */
+const PRESENTATION_TOOL_NAMES: ReadonlySet<string> = new Set(['render_chart', 'render_html'])
+
+/**
+ * Recognize a tool that renders its artifact inline (chart / html), so its call
+ * card stays visible when the Turn-process disclosure folds in compact mode.
+ * @param name - durable Tool-call name.
+ * @returns whether the call presents an inline artifact.
+ */
+export function isPresentationTool(name: string): boolean {
+  return PRESENTATION_TOOL_NAMES.has(name)
+}

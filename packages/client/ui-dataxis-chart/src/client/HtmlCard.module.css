@@ -1,0 +1,40 @@
+.card {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: var(--dsw-alias-label-primary);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.frame {
+  width: 100%;
+  min-height: 320px;
+  height: 480px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: #ffffff;
+  display: block;
+}
+
+.empty {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  padding: 6px 0;
+}
