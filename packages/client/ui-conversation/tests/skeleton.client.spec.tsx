@@ -567,6 +567,23 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.getByRole('tab', { name: 'New view' }).getAttribute('aria-selected')).toBe('false')
   })
 
+  it('portrait: no View tabs, and a persisted Trajectory selection lands on Chat', () => {
+    // Portrait is the mobile gate (use-portrait.ts). The tab strip is not
+    // rendered there, so an active View the user cannot switch away from must
+    // not survive the resolution.
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: query === '(orientation: portrait)',
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })))
+    const b = mount(sessionSnapshotOf())
+    act(() => { b.store.actions.setView('trajectory') })
+
+    expect(b.view.queryAllByRole('tab')).toEqual([])
+    expect(b.view.getByTestId('view-chat')).toBeTruthy()
+    expect(b.view.queryByTestId('view-trajectory')).toBeNull()
+  })
+
   it('rolls the pending workspace label back when switching fails', async () => {
     const selectWorkspace = vi.fn(async () => { throw new Error('connect failed') })
     const b = mount(

@@ -358,3 +358,13 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+/* Mobile mode (portrait viewport): the composer keeps the draft and Send. The
+   command `+` and the mode cluster (the permission and Plan seats) are chrome
+   a portrait bar has no room for. */
+@media (orientation: portrait) {
+  .add,
+  .modes {
+    display: none;
+  }
+}

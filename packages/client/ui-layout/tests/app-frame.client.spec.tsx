@@ -48,6 +48,9 @@ class ResizeObserverStub {
 }
 
 let frameWidth = 1920
+/** Mocked frame height; unset derives a landscape 16:9 box from the width, so a
+ * narrow frame stays landscape unless a case asks for portrait. */
+let frameHeight: number | undefined
 
 /** Test-local selector hook over a framework-neutral store instance. */
 function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapshot: () => T }) {
@@ -56,6 +59,7 @@ function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapsho
 
 function mountFrame() {
   window.innerWidth = frameWidth // first-render viewport source before the observer fires
+  window.innerHeight = frameHeight ?? 768
   const instance = createLayoutStore().create()
   const slotCalls: { key: string; props: unknown }[] = []
   const renderSlot = ((key: string, owner: object) => {
@@ -125,6 +129,7 @@ function drag(handle: Element, fromX: number, toX: number): void {
 
 beforeEach(() => {
   frameWidth = 1920
+  frameHeight = undefined
   selectedSession.current = 's-test' as SessionId
   selectedSessionBlank.current = false
   selectedSessionTitle.current = undefined
@@ -135,7 +140,8 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (h: number) => { clearTimeout(h) })
   window.innerWidth = frameWidth
   Element.prototype.getBoundingClientRect = function () {
-    return { width: frameWidth, height: 1080, top: 0, left: 0, right: frameWidth, bottom: 1080, x: 0, y: 0, toJSON: () => ({}) }
+    const height = frameHeight ?? Math.round(frameWidth * 9 / 16)
+    return { width: frameWidth, height, top: 0, left: 0, right: frameWidth, bottom: height, x: 0, y: 0, toJSON: () => ({}) }
   }
   // jsdom lacks pointer capture: emulate per-element so hasPointerCapture gates pass.
   const captured = new WeakSet<Element>()
@@ -363,6 +369,37 @@ describe('AppFrame — narrow-viewport auto-collapse', () => {
     frameWidth = 1920
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
     expect(tracks(frame)).toEqual([400, 0])
+  })
+})
+
+describe('AppFrame — mobile mode (portrait frame)', () => {
+  it('renders the chat column alone: no sidebar, no details, no drag handles', () => {
+    frameWidth = 420
+    frameHeight = 900
+    const { frame, slotCalls, getByTestId, queryByTestId } = mountFrame()
+    expect(frame.style.gridTemplateColumns).toBe('minmax(0, 1fr)')
+    expect(getByTestId('center-content')).toBeTruthy()
+    expect(queryByTestId('sidebar-content')).toBeNull()
+    expect(queryByTestId('details-content')).toBeNull()
+    const keys = slotCalls.map(c => c.key)
+    expect(keys).not.toContain('sidebar')
+    expect(keys).not.toContain('details')
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(0)
+  })
+
+  it('leaves mobile mode when the frame rotates back to landscape', () => {
+    frameWidth = 420
+    frameHeight = 900
+    const { frame, getByTestId } = mountFrame()
+    expect(frame.style.gridTemplateColumns).toBe('minmax(0, 1fr)')
+
+    frameWidth = 1200
+    frameHeight = undefined
+    act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
+
+    expect(tracks(frame)).toEqual([280, 0])
+    expect(getByTestId('sidebar-content')).toBeTruthy()
+    expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
   })
 })
 

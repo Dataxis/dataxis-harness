@@ -9,6 +9,7 @@ import type {
 } from '../contract/slots.ts'
 import { conversationPhase } from '../contract/snapshot.ts'
 import { resolveActiveView } from '../view-selection.ts'
+import { usePortrait } from './use-portrait.ts'
 import css from './ConversationRoot.module.css'
 
 /** Full props composed from the strict session body contract. */
@@ -62,7 +63,10 @@ export function ConversationSessionHeader({
 }: ConversationSessionHeaderProps) {
   const tabs = useConversationViews(value => value)
   const selectedId = useStore(s => s.view)
-  const active = resolveActiveView(tabs, selectedId)
+  const portrait = usePortrait()
+  // Portrait offers no View tabs, so a persisted Trajectory selection has to
+  // resolve to Chat: the tab the user would need to switch back is not there.
+  const active = resolveActiveView(tabs, portrait ? null : selectedId)
   const ancestry = useSessions(s => deriveAncestry(s, sessionId), equalBreadcrumbs)
   const session = useSession(s => s)
   const conversation = useConversation(s => s)
@@ -134,7 +138,7 @@ export function ConversationSessionHeader({
               {renderSlot('conversation.session.header.utilities', {})}
             </div>
           </div>
-          {tabs.length > 1 && (
+          {!portrait && tabs.length > 1 && (
             <div className={css.tabs} role="tablist">
               {tabs.map(viewTab => (
                 <button
@@ -168,7 +172,9 @@ export function ConversationSession({
 }: ConversationSessionProps) {
   const tabs = useConversationViews(value => value)
   const selectedId = useStore(s => s.view)
-  const active = resolveActiveView(tabs, selectedId)
+  // The same portrait fallback as ConversationSessionHeader above.
+  const portrait = usePortrait()
+  const active = resolveActiveView(tabs, portrait ? null : selectedId)
   const session = useSession(s => s)
   const conversation = useConversation(s => s)
   const inputState = useInput(s => s)

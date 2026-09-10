@@ -450,3 +450,14 @@
 .root[data-phase='settling'] .composerSeat {
   visibility: hidden;
 }
+
+/* Mobile mode (portrait viewport): the column keeps the transcript and the
+   composer. The new-session workspace/agent-preset row and the header
+   utilities (the session-log download action) are chrome a portrait column
+   has no room for. */
+@media (orientation: portrait) {
+  .heroWorkspaceRow,
+  .headerUtilities {
+    display: none;
+  }
+}
