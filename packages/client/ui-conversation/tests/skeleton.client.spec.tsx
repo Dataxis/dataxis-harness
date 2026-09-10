@@ -568,20 +568,24 @@ describe('ConversationRoot resident composer', () => {
   })
 
   it('portrait: no View tabs, and a persisted Trajectory selection lands on Chat', () => {
-    // Portrait is the mobile gate (use-portrait.ts). The tab strip is not
-    // rendered there, so an active View the user cannot switch away from must
-    // not survive the resolution.
-    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
-      matches: query === '(orientation: portrait)',
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })))
-    const b = mount(sessionSnapshotOf())
-    act(() => { b.store.actions.setView('trajectory') })
+    // Portrait is the mobile gate (use-portrait.ts reads the window's own box).
+    // The tab strip is not rendered there, so an active View the user cannot
+    // switch away from must not survive the resolution.
+    const width = window.innerWidth
+    const height = window.innerHeight
+    window.innerWidth = 420
+    window.innerHeight = 900
+    try {
+      const b = mount(sessionSnapshotOf())
+      act(() => { b.store.actions.setView('trajectory') })
 
-    expect(b.view.queryAllByRole('tab')).toEqual([])
-    expect(b.view.getByTestId('view-chat')).toBeTruthy()
-    expect(b.view.queryByTestId('view-trajectory')).toBeNull()
+      expect(b.view.queryAllByRole('tab')).toEqual([])
+      expect(b.view.getByTestId('view-chat')).toBeTruthy()
+      expect(b.view.queryByTestId('view-trajectory')).toBeNull()
+    } finally {
+      window.innerWidth = width
+      window.innerHeight = height
+    }
   })
 
   it('rolls the pending workspace label back when switching fails', async () => {

@@ -454,10 +454,9 @@
 /* Mobile mode (portrait viewport): the column keeps the transcript and the
    composer. The new-session workspace/agent-preset row and the header
    utilities (the session-log download action) are chrome a portrait column
-   has no room for. */
-@media (orientation: portrait) {
-  .heroWorkspaceRow,
-  .headerUtilities {
-    display: none;
-  }
+   has no room for. `data-mobile` is set by AppFrame from the frame's own box,
+   not the `orientation` media query, which is unreliable inside an iframe. */
+[data-mobile='true'] .heroWorkspaceRow,
+[data-mobile='true'] .headerUtilities {
+  display: none;
 }

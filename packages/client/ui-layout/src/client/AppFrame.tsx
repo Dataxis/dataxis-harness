@@ -194,6 +194,7 @@ export function AppFrame({
       data-sidebar-collapsed={sidebarCollapsed || undefined}
       data-details-collapsed={cols.details === 0 || undefined}
       data-dragging={dragging || undefined}
+      data-mobile={mobile || undefined}
     >
       <DocumentTitle
         productTitle={productTitle}

@@ -378,6 +378,7 @@ describe('AppFrame — mobile mode (portrait frame)', () => {
     frameHeight = 900
     const { frame, slotCalls, getByTestId, queryByTestId } = mountFrame()
     expect(frame.style.gridTemplateColumns).toBe('minmax(0, 1fr)')
+    expect(frame.getAttribute('data-mobile')).toBe('true')
     expect(getByTestId('center-content')).toBeTruthy()
     expect(queryByTestId('sidebar-content')).toBeNull()
     expect(queryByTestId('details-content')).toBeNull()
@@ -400,6 +401,7 @@ describe('AppFrame — mobile mode (portrait frame)', () => {
     expect(tracks(frame)).toEqual([280, 0])
     expect(getByTestId('sidebar-content')).toBeTruthy()
     expect(frame.querySelectorAll('[class*="handle"]')).toHaveLength(1)
+    expect(frame.getAttribute('data-mobile')).toBeNull()
   })
 })
 

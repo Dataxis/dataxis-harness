@@ -361,10 +361,9 @@
 
 /* Mobile mode (portrait viewport): the composer keeps the draft and Send. The
    command `+` and the mode cluster (the permission and Plan seats) are chrome
-   a portrait bar has no room for. */
-@media (orientation: portrait) {
-  .add,
-  .modes {
-    display: none;
-  }
+   a portrait bar has no room for. `data-mobile` is set by AppFrame from the
+   frame's own box, not the `orientation` media query. */
+[data-mobile='true'] .add,
+[data-mobile='true'] .modes {
+  display: none;
 }
