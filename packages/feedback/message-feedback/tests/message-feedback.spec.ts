@@ -658,4 +658,35 @@ describe('MessageFeedbackService durability ordering', () => {
       value: { items: [{ messageId: fixture.assistantMessageIds[0] }] },
     })
   })
+
+  it('debounces a rating 30s then spawns the background audit agent', async () => {
+    const { ctx, persistence } = await harness()
+    const fixture = messageFixture('background-audit')
+    persistence.persist(fixture.session)
+
+    const start = vi.fn<(name: string, request: unknown) => Promise<unknown>>().mockResolvedValue(undefined)
+    const get = vi.fn().mockReturnValue({ id: fixture.session.id })
+    ctx.provide('agents', { get })
+    ctx.provide('subagents', { start })
+
+    vi.useFakeTimers()
+    try {
+      await ctx.messageFeedback.put({
+        sessionId: fixture.session.id,
+        messageId: fixture.assistantMessageIds[0],
+        rating: 'positive',
+        ifVersion: null,
+      })
+      expect(start).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(start).toHaveBeenCalledTimes(1)
+      const [name, request] = start.mock.calls[0]!
+      expect(name).toBe('spawn')
+      expect((request as { label?: string }).label).toBe('feedback-positive')
+      expect((request as { prompt: Array<{ type: 'text'; text: string }> }).prompt[0]!.text).toContain('audit')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

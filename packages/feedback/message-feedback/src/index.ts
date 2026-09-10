@@ -7,7 +7,6 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { deriveEventMessage, isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-session'
@@ -29,6 +28,7 @@ import type {
   MessageFeedbackNoteTooLarge,
   MessageFeedbackPutRequest,
   MessageFeedbackPutResult,
+  MessageFeedbackRating,
   MessageFeedbackRejected,
   MessageFeedbackSessionNotFound,
   MessageFeedbackSuccess,
@@ -51,6 +51,8 @@ export type { MessageFeedbackRow, MessageFeedbackSessionIdentity } from './spec.
 export interface Config {
   /** Maximum UTF-8 byte length accepted for one note. */
   readonly maxNoteBytes: number
+  /** Milliseconds to debounce a rating before the background audit fires; defaults to 30_000. */
+  readonly auditDebounceMillis?: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -70,6 +72,34 @@ function resolveMaxNoteBytes(value: number): number {
     )
   }
   return value
+}
+
+/** Validate the one deployment-varying audit debounce at the configuration boundary. */
+function resolveAuditDebounceMillis(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(
+      `message-feedback: auditDebounceMillis must be a non-negative safe integer, got ${String(value)}`,
+    )
+  }
+  return value
+}
+
+/** Minimal view of the agents registry consumed by the background audit. */
+interface AgentsView {
+  get(id: SessionId): { readonly id: SessionId } | undefined
+}
+
+/** Minimal view of the subagent runtime consumed by the background audit. */
+interface SubagentsView {
+  start(
+    name: string,
+    request: {
+      label?: string
+      prompt: ReadonlyArray<{ type: 'text'; text: string }>
+      parent: { readonly id: SessionId }
+      signal: AbortSignal
+    },
+  ): Promise<unknown>
 }
 
 /** Copy and freeze one item before it crosses the service boundary. */
@@ -161,20 +191,24 @@ export class MessageFeedbackService extends TypertRemoteService {
   /** Loader validation for the required note-size policy. */
   static Config: s<Config> = s.object({
     maxNoteBytes: s.number().step(1).min(1).required(),
+    auditDebounceMillis: s.number().step(1).min(0).default(30_000),
   })
 
   private readonly maxNoteBytes: number
+  private readonly auditDebounceMillis: number
   private table?: KvTable<SessionId, MessageFeedbackRow>
   private readonly operationTails = new Map<SessionId, Promise<void>>()
   private mutationAdmissionOpen = true
+  private readonly auditTimers = new Map<SessionId, ReturnType<typeof setTimeout>>()
 
   /**
    * @param ctx - Host context carrying persistence and the storage-domain form.
-   * @param config - Required note-size policy.
+   * @param config - Required note-size and audit-debounce policy.
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'messageFeedback')
     this.maxNoteBytes = resolveMaxNoteBytes(config.maxNoteBytes)
+    this.auditDebounceMillis = resolveAuditDebounceMillis(config.auditDebounceMillis ?? 30_000)
   }
 
   /** Open and own the one message-feedback sidecar domain. */
@@ -182,6 +216,8 @@ export class MessageFeedbackService extends TypertRemoteService {
     const domain = await this.ctx.storageDomain.open(messageFeedbackDomainSpec)
     this.ctx.effect(() => async () => {
       this.mutationAdmissionOpen = false
+      for (const timer of this.auditTimers.values()) clearTimeout(timer)
+      this.auditTimers.clear()
       await Promise.all(this.operationTails.values())
       await domain.close()
     }, 'message-feedback.domainClose')
@@ -266,24 +302,89 @@ export class MessageFeedbackService extends TypertRemoteService {
         request.sessionId,
         rowSnapshot(identityOf(durable.meta), nextItems),
       )
-      // Surface the rating to the agent on its next turn so the
-      // audit → optimization loop can fire from feedback.
-      const session = this.ctx.sessions.get(request.sessionId)
-      if (session !== undefined) {
-        const rating = item.rating === 'positive' ? '👍' : '👎'
-        const noteText = note.value === undefined ? '' : ` (note: "${note.value}")`
-        session.append('user/message', createUserMessage({
-          content: [{
-            type: 'text',
-            text: `<system-reminder>The user rated the previous answer ${rating}${noteText}. `
-              + 'Run /audit to classify which steps were Essential, then /optimization to '
-              + `${item.rating === 'positive' ? 'keep' : 'amend'} the fast-path skill.</system-reminder>`,
-          }],
-          source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-message-feedback' },
-        }), { surfaceOp: 'append' })
-      }
+      // Debounce the feedback-gated audit → optimization loop so the user can
+      // finish editing the note, then run it in a background agent.
+      this.scheduleAudit(request.sessionId, item.rating, note.value)
       return success(snapshotItem(item))
     })
+  }
+
+  /**
+   * Debounce a committed rating so the audit fires only after the user stops
+   * editing (rating or note). `0` fires immediately; every commit re-arms the
+   * window with the latest values.
+   * @param sessionId - rated session.
+   * @param rating - committed rating.
+   * @param note - committed note, when present.
+   */
+  private scheduleAudit(
+    sessionId: SessionId,
+    rating: MessageFeedbackRating,
+    note: string | undefined,
+  ): void {
+    const existing = this.auditTimers.get(sessionId)
+    if (existing !== undefined) clearTimeout(existing)
+    const run = (): void => {
+      this.auditTimers.delete(sessionId)
+      void this.runBackgroundAudit(sessionId, rating, note)
+    }
+    if (this.auditDebounceMillis === 0) {
+      run()
+      return
+    }
+    this.auditTimers.set(sessionId, setTimeout(run, this.auditDebounceMillis))
+  }
+
+  /** Cancel a pending audit when the feedback is removed before it fires. */
+  private cancelAudit(sessionId: SessionId): void {
+    const timer = this.auditTimers.get(sessionId)
+    if (timer === undefined) return
+    clearTimeout(timer)
+    this.auditTimers.delete(sessionId)
+  }
+
+  /**
+   * Spawn a one-shot background agent that runs the audit → optimization loop.
+   * A missing live agent skips with a warning; the run is fire-and-forget.
+   * @param sessionId - session whose answer was rated.
+   * @param rating - committed rating.
+   * @param note - committed note, when present.
+   */
+  private async runBackgroundAudit(
+    sessionId: SessionId,
+    rating: MessageFeedbackRating,
+    note: string | undefined,
+  ): Promise<void> {
+    // Optional host services: the audit is best-effort and fails open when the
+    // deployment does not compose the agents/subagents capability.
+    const agents = this.ctx.get('agents') as AgentsView | undefined
+    const subagents = this.ctx.get('subagents') as SubagentsView | undefined
+    if (agents === undefined || subagents === undefined) {
+      this.ctx.logger.warn('message-feedback: agents/subagents service not composed; skipping background audit')
+      return
+    }
+    const agent = agents.get(sessionId)
+    if (agent === undefined) {
+      this.ctx.logger.warn('message-feedback: no live agent for session %s; skipping background audit', sessionId)
+      return
+    }
+    const ratingText = rating === 'positive' ? '👍' : '👎'
+    const noteText = note === undefined ? '' : ` (note: "${note}")`
+    try {
+      await subagents.start('spawn', {
+        label: `feedback-${rating}`,
+        prompt: [{
+          type: 'text',
+          text: `The user rated the previous answer ${ratingText}${noteText}. `
+            + 'Run the audit skill to classify which steps were Essential, then the optimization skill to '
+            + `${rating === 'positive' ? 'keep' : 'amend'} the fast-path skill.`,
+        }],
+        parent: agent,
+        signal: new AbortController().signal,
+      })
+    } catch (error) {
+      this.ctx.logger.warn('message-feedback: background audit spawn failed: %s', String(error))
+    }
   }
 
   /**
@@ -314,6 +415,7 @@ export class MessageFeedbackService extends TypertRemoteService {
         request.sessionId,
         rowSnapshot(identityOf(known.value.meta), items.filter(item => item !== existing)),
       )
+      this.cancelAudit(request.sessionId)
       return success<MessageFeedbackDeleteValue>(Object.freeze({ absent: true }))
     })
   }
