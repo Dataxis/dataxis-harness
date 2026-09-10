@@ -7,6 +7,7 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { deriveEventMessage, isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-session'
@@ -265,6 +266,22 @@ export class MessageFeedbackService extends TypertRemoteService {
         request.sessionId,
         rowSnapshot(identityOf(durable.meta), nextItems),
       )
+      // Surface the rating to the agent on its next turn so the
+      // audit → optimization loop can fire from feedback.
+      const session = this.ctx.sessions.get(request.sessionId)
+      if (session !== undefined) {
+        const rating = item.rating === 'positive' ? '👍' : '👎'
+        const noteText = note.value === undefined ? '' : ` (note: "${note.value}")`
+        session.append('user/message', createUserMessage({
+          content: [{
+            type: 'text',
+            text: `<system-reminder>The user rated the previous answer ${rating}${noteText}. `
+              + 'Run /audit to classify which steps were Essential, then /optimization to '
+              + `${item.rating === 'positive' ? 'keep' : 'amend'} the fast-path skill.</system-reminder>`,
+          }],
+          source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-message-feedback' },
+        }), { surfaceOp: 'append' })
+      }
       return success(snapshotItem(item))
     })
   }
