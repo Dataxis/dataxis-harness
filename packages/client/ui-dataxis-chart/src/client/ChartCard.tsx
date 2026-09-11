@@ -13,7 +13,10 @@ import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallOwnerProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import css from './ChartCard.module.css'
 
-const PALETTE = ['#5b8def', '#f2a65a', '#54c2a1', '#e0788c', '#a58bef', '#6fc3e8', '#e8c15a', '#c78be0']
+const PALETTE = [
+  '#5b8def', '#f2a65a', '#54c2a1', '#e0788c', '#a58bef', '#6fc3e8', '#e8c15a', '#c78be0',
+  '#8cd17d', '#ff9da4', '#b3a29a', '#4e79a7', '#59a14f', '#edc948', '#f4b79a', '#9ac8e0',
+]
 
 interface RawSeries {
   name?: string
@@ -52,7 +55,7 @@ function fmt(n: number): string {
   const r = Number.isInteger(n) ? n : Math.round(n * 100) / 100
   const neg = r < 0
   const parts = String(Math.abs(r)).split('.')
-  parts[0] = parts[0]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  parts[0] = (parts[0] ?? '').replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return (neg ? '-' : '') + parts.join('.')
 }
 
@@ -228,8 +231,44 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
       visible.forEach((s, si) => {
         const v = s.values[i]
         if (typeof v !== 'number') return
-        const topVal = stack ? acc + v : v
-        const enter = (): void => { onShow(labels[i]!, [{ name: s.name, value: fmt(v), color: s.color }]) }
+        const enter = (): void => { onShow(labels[i] ?? '', [{ name: s.name, value: fmt(v), color: s.color }]) }
+        if (stack) {
+          // Stacked: full-band segments at the accumulated offset (on top of
+          // each other), never the grouped side-by-side slots.
+          if (horizontal) {
+            rects.push(
+              <rect
+                key={`${s.name}:${i}`}
+                x={L + plotW * (acc / top)}
+                y={T + band * i + gap / 2}
+                width={Math.max(plotW * (v / top), 0.5)}
+                height={band - gap}
+                rx={2}
+                fill={s.color}
+                onMouseEnter={enter}
+                onMouseLeave={onHide}
+                style={{ cursor: 'pointer' }}
+              />,
+            )
+          } else {
+            rects.push(
+              <rect
+                key={`${s.name}:${i}`}
+                x={L + band * i + gap / 2}
+                y={yFor(acc + v)}
+                width={band - gap}
+                height={Math.max(plotH * (v / top), 0.5)}
+                rx={2}
+                fill={s.color}
+                onMouseEnter={enter}
+                onMouseLeave={onHide}
+                style={{ cursor: 'pointer' }}
+              />,
+            )
+          }
+          acc += v
+          return
+        }
         if (horizontal) {
           rects.push(
             <rect
@@ -250,7 +289,7 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
             <rect
               key={`${s.name}:${i}`}
               x={L + band * i + gap / 2 + bs * si}
-              y={yFor(topVal)}
+              y={yFor(v)}
               width={bs}
               height={Math.max(plotH * (v / top), 0.5)}
               rx={2}
@@ -261,7 +300,6 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
             />,
           )
         }
-        if (stack) acc += v
       })
       return <g key={`cat${i}`}>{rects}</g>
     })
@@ -274,8 +312,9 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
       }
       if (pts.length === 0) return
       const lineD = pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-      const first = pts[0]!
-      const last = pts[pts.length - 1]!
+      const first = pts[0]
+      const last = pts[pts.length - 1]
+      if (first === undefined || last === undefined) return
       if (chartType === 'area') {
         const areaD = `${lineD} L ${last.x} ${T + plotH} L ${first.x} ${T + plotH} Z`
         marks.push(<path key={`area${si}`} d={areaD} fill={s.color} opacity={0.16} stroke="none" />)
@@ -291,7 +330,7 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
             fill={s.color}
             stroke="var(--dsw-alias-bg-layer-1)"
             strokeWidth={1.5}
-            onMouseEnter={() => { onShow(labels[p.i]!, [{ name: s.name, value: fmt(p.v), color: s.color }]) }}
+            onMouseEnter={() => { onShow(labels[p.i] ?? '', [{ name: s.name, value: fmt(p.v), color: s.color }]) }}
             onMouseLeave={onHide}
             style={{ cursor: 'pointer' }}
           />,
@@ -317,7 +356,7 @@ function PieChart({ chartType, labels, series, colors, hidden, onShow, onHide }:
   let total = 0
   const idx: number[] = []
   for (let i = 0; i < labels.length; i++) {
-    if (hidden[labels[i]!]) continue
+    if (hidden[labels[i] ?? '']) continue
     const v = values[i]
     if (typeof v === 'number' && v > 0) {
       total += v
@@ -326,12 +365,12 @@ function PieChart({ chartType, labels, series, colors, hidden, onShow, onHide }:
   }
   let angle = -Math.PI / 2
   const slices = idx.map((i) => {
-    const v = values[i]!
+    const v = values[i] ?? 0
     const frac = total > 0 ? v / total : 0
     const a0 = angle
     const a1 = angle + frac * Math.PI * 2
     angle = a1
-    const color = colors[i % colors.length]!
+    const color = colors[i % colors.length] ?? '#5b8def'
     const d = donut ? donutPath(cx, cy, r, rInner, a0, a1) : piePath(cx, cy, r, a0, a1)
     return (
       <path
@@ -340,7 +379,7 @@ function PieChart({ chartType, labels, series, colors, hidden, onShow, onHide }:
         fill={color}
         stroke="var(--dsw-alias-bg-layer-1)"
         strokeWidth={1.5}
-        onMouseEnter={() => { onShow(labels[i]!, [{ name: labels[i]!, value: `${fmt(v)} (${Math.round(frac * 100)}%)`, color }]) }}
+        onMouseEnter={() => { onShow(labels[i] ?? '', [{ name: labels[i] ?? '', value: `${fmt(v)} (${Math.round(frac * 100)}%)`, color }]) }}
         onMouseLeave={onHide}
         style={{ cursor: 'pointer' }}
       />
@@ -394,13 +433,13 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
   const series: Series[] = (args.series ?? []).map((s, i) => ({
     name: s.name !== undefined && s.name !== '' ? s.name : `Series ${i + 1}`,
     values: s.values ?? [],
-    color: colors[i % colors.length]!,
+    color: colors[i % colors.length] ?? '#5b8def',
   }))
   const chartType = args.chart_type ?? 'bar'
   const isPie = chartType === 'pie' || chartType === 'donut'
 
   const legendItems = isPie
-    ? labels.map((lb, i) => ({ key: lb, label: lb, color: colors[i % colors.length]! }))
+    ? labels.map((lb, i) => ({ key: lb, label: lb, color: colors[i % colors.length] ?? '#5b8def' }))
     : series.map(s => ({ key: s.name, label: s.name, color: s.color }))
 
   const sub = isPie ? `${labels.length} slices` : `${labels.length} categories · ${series.length} series`
@@ -411,7 +450,16 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
 
   const body = isPie
     ? <PieChart chartType={chartType} labels={labels} series={series} colors={colors} hidden={hidden} onShow={show} onHide={hide} />
-    : <CartesianChart chartType={chartType} labels={labels} series={series} hidden={hidden} stacked={args.stacked === true} colors={colors} onShow={show} onHide={hide} />
+    : <CartesianChart
+      chartType={chartType}
+      labels={labels}
+      series={series}
+      hidden={hidden}
+      stacked={args.stacked === true}
+      colors={colors}
+      onShow={show}
+      onHide={hide}
+    />
 
   let tipEl: ReactNode = null
   if (tip !== null) {
