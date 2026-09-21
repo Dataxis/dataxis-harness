@@ -2,11 +2,12 @@
 // phase does not remount its textarea.
 
 import type { ReactNode, RefObject } from 'react'
+import clsx from 'clsx'
 import {
   DataxisLogo, IconChevronDownOutline14, IconFolderClose16, IconFolderOpen16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
-import type { ConversationSlotProps } from '../contract/slots.ts'
+import type { ConversationSlotProps, SessionFailure } from '../contract/slots.ts'
 import css from './HeroShell.module.css'
 
 /** The owner's locale seat type, passed to hero chrome as a plain prop. */
@@ -66,6 +67,19 @@ export interface HeroShellProps {
   t: HeroTranslate
   /** Authorized renderer for the hero brand-mark slot. */
   renderSlot: ConversationSlotProps['renderSlot']
+  /**
+   * True while the session is still being provisioned on a tenant page (cold
+   * start, before any session exists). The workspace is created server-side
+   * first, so the mark shimmers behind a status line instead of leaving the
+   * picker's empty state.
+   */
+  provisioning?: boolean
+  /**
+   * Why provisioning failed, when it did. A refused Session never arrives, so the
+   * loader would spin forever; this replaces it with the reason. Declared with an
+   * explicit `undefined` because callers pass the ternary result directly.
+   */
+  failure?: SessionFailure | undefined
   /** Overlay content after the stack (modals). */
   children?: ReactNode
 }
@@ -76,17 +90,32 @@ export interface HeroShellProps {
  * @param props - see {@link HeroShellProps}.
  * @returns the centered hero element tree.
  */
-export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
+export function HeroShell({ t, renderSlot, provisioning = false, failure, children }: HeroShellProps) {
+  const markClass = clsx(css.wordmark, provisioning && css.wordmarkLoading)
+  // The shimmer rides the HTML wrapper: the brand mark is an <svg>, which renders
+  // no pseudo-elements, so the sweep cannot be drawn on the mark itself.
+  const brandClass = clsx(css.brandName, provisioning && css.brandShimmer)
   return (
     <div className={css.root}>
       <div className={css.stack}>
         <div className={css.brand}>
-          <span className={css.brandName} role="img" aria-label={t('hero.brandLabel')}>
-            {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.wordmark }, {
-              fallback: <DataxisLogo size={34} className={css.wordmark} />,
+          <span className={brandClass} role="img" aria-label={t('hero.brandLabel')}>
+            {renderSlot('conversation.hero.brand.mark', { size: 34, className: markClass }, {
+              fallback: <DataxisLogo size={34} className={markClass} />,
             })}
           </span>
         </div>
+        {provisioning && (
+          <p className={css.provisioning} role={failure === undefined ? 'status' : 'alert'}>
+            {/* No spinner on failure: nothing is in flight any more. */}
+            {failure === undefined && <span className={css.spinner} aria-hidden />}
+            {failure === undefined
+              ? t('hero.provisioning')
+              : failure.kind === 'unregistered'
+                ? t('hero.unregistered')
+                : failure.message}
+          </p>
+        )}
         <div className={css.body}>
           {/* The composer remains mounted outside this component. */}
         </div>

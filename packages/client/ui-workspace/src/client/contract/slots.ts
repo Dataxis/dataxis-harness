@@ -88,6 +88,12 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = {
+  /**
+   * Whether the page was opened with a tenant token. A tenant page lists only
+   * sessions: its Session Workspace is the tenant, so workspace sections carry
+   * no information and the grouping choice is meaningless.
+   */
+  tenantActive: () => boolean
   hooks: DirectoryPickingInjected['hooks'] & {
     /**
      * Fixed Host facts, reached through a hook rather than injected as values:

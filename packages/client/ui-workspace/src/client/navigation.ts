@@ -14,6 +14,15 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
   /**
+   * Why the most recent New Session attempt failed, or undefined.
+   *
+   * A refused creation used to be invisible: the caller logged a warning and the
+   * conversation stayed in its provisioning state forever, showing a loading
+   * indicator for a session that was never coming. The hero reads this to say what
+   * happened instead of spinning.
+   */
+  readonly sessionFailure: SessionFailureSource
+  /**
    * Resolve the reusable or newly created blank Session for a Workspace.
    * @param workspaceId - target Workspace.
    * @returns a Session already addressable through the Session Controller.
@@ -68,8 +77,58 @@ export class DirectoryBrowseError extends Error {
 }
 
 /** Implements Workspace archive and directory UI operations. */
+/** Why a New Session attempt failed, in a form a surface can localize. */
+export type SessionFailure =
+  /** The caller is not a registered tenant — the DSH refused the Session outright. */
+  | { readonly kind: 'unregistered' }
+  /** Anything else, reported verbatim because only the Host knows what it means. */
+  | { readonly kind: 'other'; readonly message: string }
+
+/** Observable source of the last failed New Session attempt. */
+export interface SessionFailureSource {
+  /** @returns the failure, or undefined when the last attempt resolved. */
+  getSnapshot(): SessionFailure | undefined
+  /**
+   * @param listener - called whenever the message changes.
+   * @returns disposer withdrawing the listener.
+   */
+  subscribe(listener: () => void): () => void
+}
+
 class UiWorkspaceService extends Service implements UiWorkspace {
   private readonly connecting = new Map<WorkspaceId, Promise<SessionId>>()
+  private failure: SessionFailure | undefined
+  private readonly failureListeners = new Set<() => void>()
+
+  readonly sessionFailure: SessionFailureSource = {
+    getSnapshot: () => this.failure,
+    subscribe: (listener) => {
+      this.failureListeners.add(listener)
+      return () => { this.failureListeners.delete(listener) }
+    },
+  }
+
+  private setFailure(failure: SessionFailure | undefined): void {
+    if (this.failure === failure) return
+    this.failure = failure
+    for (const listener of [...this.failureListeners]) listener()
+  }
+
+  /**
+   * Classify a rejected creation.
+   *
+   * `session/tenant-scope-required` is the tenant gate refusing: the signed identity
+   * resolved to no registered company, which is a state the caller can explain rather
+   * than report verbatim. Everything else is surfaced as-is, since only the Host knows
+   * what it means.
+   * @param reason - the rejection value.
+   * @returns the failure to publish.
+   */
+  private static classify(reason: unknown): SessionFailure {
+    const code = (reason as { rpcError?: { code?: unknown } } | undefined)?.rpcError?.code
+    if (code === 'session/tenant-scope-required') return { kind: 'unregistered' }
+    return { kind: 'other', message: reason instanceof Error ? reason.message : String(reason) }
+  }
 
   /**
    * @param ctx - Client root Context.
@@ -127,8 +186,8 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       return
     }
     void this.connectWorkspace(target).then(
-      (sessionId) => { this.sessions.open(sessionId) },
-      (reason: unknown) => { console.warn('new session failed:', reason) },
+      (sessionId) => { this.setFailure(undefined); this.sessions.open(sessionId) },
+      (reason: unknown) => { this.setFailure(UiWorkspaceService.classify(reason)) },
     )
   }
 
@@ -177,6 +236,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       void this.connectWorkspace(target).then(
         (sessionId) => {
           if (disposed) return
+          this.setFailure(undefined)
           if (this.sessions.list.getSnapshot().current === undefined) {
             this.sessions.open(sessionId)
           }
@@ -185,7 +245,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
         (reason: unknown) => {
           if (disposed) return
           initial = 'waiting'
-          console.warn('initial workspace selection failed:', reason)
+          // The boot-time auto-connect is the path a tenant page takes, so its refusal
+          // has to reach the surface too — this handler is separate from startSession's.
+          this.setFailure(UiWorkspaceService.classify(reason))
         },
       )
     }

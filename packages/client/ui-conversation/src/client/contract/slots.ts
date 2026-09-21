@@ -213,9 +213,38 @@ export interface ConvViewOwnerProps {
 export type ConvViewProps = PropsRuntime<'conversation.view'>
 
 /** Business callbacks injected into the resident Conversation shell. */
+/**
+ * Business callbacks injected into the resident conversation root.
+ */
+/** Why a New Session attempt failed, in a form a surface can localize. */
+export type SessionFailure =
+  | { readonly kind: 'unregistered' }
+  | { readonly kind: 'other'; readonly message: string }
+
 export interface ConversationInjected {
   /** Connect and open a blank Session in the selected Workspace. */
   selectWorkspace: (workspaceId: WorkspaceId) => Promise<void>
+  /**
+   * Source of the last failed New Session attempt.
+   *
+   * A refused creation (an unregistered tenant, say) leaves no Session behind, so the
+   * conversation would sit in its provisioning state indefinitely, showing a loader for
+   * something that is never coming. Read through this to report it instead. Carries a
+   * kind rather than a message so the copy stays locale-owned.
+   */
+  sessionFailure: {
+    getSnapshot: () => SessionFailure | undefined
+    subscribe: (listener: () => void) => () => void
+  }
+  /**
+   * Whether this page was opened with a tenant token.
+   *
+   * A tenant page has its Workspace provisioned server-side, so the cold-start
+   * Workspace picker offers nothing to choose and the provisioning state
+   * replaces it. Read through a hook, not a captured value: the registration
+   * memoizes the injected object.
+   */
+  tenantActive: () => boolean
   /** Session-addressed composer block source, or the stable absent source. */
   hooks: { composerBlock: ObservableSnapshot<ComposerBlock | undefined> }
 }

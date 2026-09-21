@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { ConversationSlotProps, InputZone } from '../contract/slots.ts'
+import type { ConversationSlotProps, InputZone, SessionFailure } from '../contract/slots.ts'
 import { conversationPhase } from '../contract/snapshot.ts'
 import { HeroShell, WorkspaceChip, workspaceLabel } from './EmptyHero.tsx'
 import css from './ConversationRoot.module.css'
@@ -131,7 +131,7 @@ function WidthHandle(props: {
 export function ConversationRoot({
   sessionId, useSession, useSessions, useSessionPendingInteraction,
   useWorkspaces, useConversation, useInput, useComposerBlock,
-  renderSlot, renderSlotChain, selectWorkspace, t,
+  renderSlot, renderSlotChain, selectWorkspace, tenantActive, sessionFailure, t,
 }: ConversationRootProps) {
   const session = useSession(s => s)
   const pendingInteraction = useSessionPendingInteraction(snapshot =>
@@ -322,6 +322,16 @@ export function ConversationRoot({
   // bar is ONE session-maybe slot rendered unconditionally — inert is a prop,
   // not a different tree, so the textarea DOM survives the transition.
   const inert = sessionId === undefined || (hero && chipTitle === undefined)
+  // A tenant page has its Workspace provisioned server-side, so before the
+  // Session lands the picker offers nothing to choose: show the loader alone
+  // instead of an inert bar carrying its placeholder. Pages without a tenant
+  // keep today's picker, which is a real affordance there.
+  const provisioning = tenantActive() && sessionId === undefined
+  // A refused Session leaves nothing behind, so `provisioning` would never end and the
+  // hero would show a loader for a Session that is not coming. Once one has failed,
+  // report it instead.
+  const [failure, setFailure] = useState<SessionFailure | undefined>(() => sessionFailure.getSnapshot())
+  useEffect(() => sessionFailure.subscribe(() => { setFailure(sessionFailure.getSnapshot()) }), [sessionFailure])
   // A raised block is the same inert posture with the blocker's own reason:
   // one disabled textarea, never a second tree. The no-workspace state wins
   // when both hold — picking a workspace is the earlier prerequisite.
@@ -345,10 +355,17 @@ export function ConversationRoot({
 
   const composerBar = (
     <div className={clsx(css.composerStack, hero && css.composerHero)}>
-      {hero && <HeroShell t={t} renderSlot={renderSlot} />}
-      {hero && heroWorkspaceRow}
+      {hero && (
+        <HeroShell
+          t={t}
+          renderSlot={renderSlot}
+          provisioning={provisioning}
+          failure={provisioning ? failure : undefined}
+        />
+      )}
+      {hero && !provisioning && heroWorkspaceRow}
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
-      {inputBar}
+      {!provisioning && inputBar}
     </div>
   )
 

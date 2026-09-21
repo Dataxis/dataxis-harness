@@ -115,6 +115,12 @@ function mount(
     omitSummaryRow?: boolean
     /** Classify the selected child as a subagent instead of an ordinary fork. */
     summaryOrigin?: 'subagent'
+    /** Render the cold start (no Session selected) instead of an open Session. */
+    noSession?: boolean
+    /** Report the page as tenant-opened. */
+    tenant?: boolean
+    /** Report a failed New Session attempt. */
+    sessionFailure?: { kind: 'unregistered' } | { kind: 'other'; message: string }
     /** Insert a first-level subagent between the root and selected child. */
     nestedSubagent?: boolean
     /** A composer block another plugin raised for this session. */
@@ -285,7 +291,7 @@ function mount(
       : (opts?.fallback ?? null)
   )) as ConversationRootProps['renderSlotChain']
   const props: ConversationRootProps = {
-    sessionId: SID,
+    sessionId: options.noSession === true ? undefined : SID,
     SessionProvider: ({ children }) => children,
     useSession,
     useConversation,
@@ -299,6 +305,11 @@ function mount(
     renderSlot,
     renderSlotChain,
     selectWorkspace: retargetWorkspace,
+    // Most cases are not tenant pages: the picker stays, as it does in a plain
+    // harness. The tenant branch is exercised explicitly.
+    tenantActive: () => options.tenant === true,
+    // No failed New Session attempt unless a case says so.
+    sessionFailure: { getSnapshot: () => options.sessionFailure, subscribe: () => () => {} },
     t,
   }
   const view = render(<ConversationRoot {...props} />)
@@ -325,6 +336,56 @@ describe('Hero chrome', () => {
     expect(brandMarkOwner.size).toBe(34)
     expect(brandMarkOwner.className).toBeTypeOf('string')
     expect(renderSlot.mock.calls[0]?.[2]?.fallback).toBeTruthy()
+    expect(view.queryByRole('status')).toBeNull()
+  })
+
+  it('breathes the mark and states progress while the workspace is provisioned', () => {
+    const idle = vi.fn<HeroShellProps['renderSlot']>(() => null)
+    render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={idle} />)
+    const idleClass = (idle.mock.calls[0]?.[1] as { className: string }).className
+
+    const provisioning = vi.fn<HeroShellProps['renderSlot']>(() => null)
+    const view = render(
+      <HeroShell t={makeTranslate(en, commonEn)} renderSlot={provisioning} provisioning />,
+    )
+    const busyClass = (provisioning.mock.calls[0]?.[1] as { className: string }).className
+
+    // The status line is the accessible signal; the animation is the visual one.
+    expect(view.getByRole('status').textContent).toBe('Preparing your workspace…')
+    expect(busyClass).not.toBe(idleClass)
+  })
+})
+
+describe('tenant provisioning', () => {
+  it('replaces the cold-start picker with the provisioning spinner on a tenant page', () => {
+    const tenant = mount(sessionSnapshotOf(), undefined, undefined, { noSession: true, tenant: true })
+    const status = tenant.view.getByRole('status')
+    expect(status.textContent).toContain('正在准备工作区…')
+    // Same circular arc the framework-free boot page showed, so the handoff
+    // reads as one continuous load.
+    expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull()
+    // The Workspace is provisioned server-side, so the picker offers nothing:
+    // neither the bar nor its row is rendered.
+    expect(tenant.view.container.querySelector('[data-composer-input]')).toBeNull()
+    expect(tenant.view.queryByTestId('view-conversation.hero.workspace')).toBeNull()
+  })
+
+  it('keeps the picker on a cold start that has no tenant', () => {
+    const plain = mount(sessionSnapshotOf(), undefined, undefined, { noSession: true })
+    expect(plain.view.queryByRole('status')).toBeNull()
+    expect(plain.view.container.querySelector('[data-composer-input]')).not.toBeNull()
+  })
+
+  it('reports an unregistered account instead of loading forever', () => {
+    const view = mount(sessionSnapshotOf(), undefined, undefined, {
+      noSession: true,
+      tenant: true,
+      sessionFailure: { kind: 'unregistered' },
+    })
+    // The refusal is a state, not a wait: an alert with support details, and no spinner.
+    const alert = view.view.getByRole('alert')
+    expect(alert.textContent).toContain('support@dataxisinternal.zohodesk.com')
+    expect(alert.querySelector('[aria-hidden="true"]')).toBeNull()
   })
 })
 

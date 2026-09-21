@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { resetTenantTokenCache } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
   WorkspaceId, WorkspaceSnapshot, WorkspaceView,
@@ -16,6 +17,13 @@ import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
+// Each case starts from a clean URL so the grouping default is never inherited
+// from a neighbour's page state.
+afterEach(() => {
+  window.history.replaceState({}, '', '/')
+  window.sessionStorage.clear()
+  resetTenantTokenCache()
+})
 beforeEach(() => { localStorage.clear(); createWorkspaceViewStore().create().actions.setOrderBy('manual') })
 
 // The seat's key domain is workspace ∪ common; the stub mirrors the real
@@ -84,6 +92,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
+    tenantActive: () => false,
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
@@ -179,6 +188,28 @@ describe('WorkspaceBrowser', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
     expect(b.store.getSnapshot().groupBy).toBe('workspace')
+  })
+
+  it('shows only sessions, never workspace grouping, once a tenant token identifies the page', () => {
+    const b = mount({
+      tenantActive: () => true,
+      useSessions: hook(sessionState([summary('alpha-s', 2), summary('beta-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s']), workspace('beta', ['beta-s'])])),
+    })
+
+    // The stored mode is untouched; the rendered list is flat regardless.
+    expect(b.store.getSnapshot().groupBy).toBe('workspace')
+    expect(screen.getByText('会话')).toBeTruthy()
+    expect(screen.getByText('alpha-s')).toBeTruthy()
+    expect(screen.getByText('beta-s')).toBeTruthy()
+    expect(screen.queryByText('工作区')).toBeNull()
+    expect(screen.queryByText('alpha')).toBeNull()
+
+    // One workspace per tenant makes the grouping choice meaningless: it is gone
+    // from the menu, while ordering still applies.
+    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+    expect(screen.queryByText('分组方式')).toBeNull()
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['手动排序', '最近更新'])
   })
 
   it('persists flat-list drag order locally and applies Last updated within that account', async () => {

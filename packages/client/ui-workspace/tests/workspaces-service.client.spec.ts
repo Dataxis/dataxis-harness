@@ -281,11 +281,29 @@ describe('UiWorkspaceService', () => {
     empty.uiWorkspace.startSession()
     expect(empty.sessions.clear).toHaveBeenCalledOnce()
 
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    // A failed start is published rather than only warned: the conversation stays in
+    // its provisioning state when no Session appears, so the reason has to reach it.
     b.sessions.create.mockRejectedValueOnce(new Error('create failed'))
     b.uiWorkspace.startSession(wid('recent-home'))
     await vi.waitFor(() => {
-      expect(warning).toHaveBeenCalledWith('new session failed:', expect.any(Error))
+      expect(b.uiWorkspace.sessionFailure.getSnapshot()).toEqual({
+        kind: 'other', message: 'create failed',
+      })
+    })
+
+    // The tenant gate's refusal is a state the caller can explain, so it is classified
+    // rather than forwarded verbatim.
+    b.sessions.create.mockRejectedValueOnce({ rpcError: { code: 'session/tenant-scope-required' } })
+    b.uiWorkspace.startSession(wid('recent-home'))
+    await vi.waitFor(() => {
+      expect(b.uiWorkspace.sessionFailure.getSnapshot()).toEqual({ kind: 'unregistered' })
+    })
+
+    // And a later success clears it.
+    b.sessions.create.mockResolvedValueOnce(sid('recovered'))
+    b.uiWorkspace.startSession(wid('recent-home'))
+    await vi.waitFor(() => {
+      expect(b.uiWorkspace.sessionFailure.getSnapshot()).toBeUndefined()
     })
   })
 
@@ -326,7 +344,6 @@ describe('UiWorkspaceService', () => {
   })
 
   it('retries failed initial selection and never overwrites a later selection', async () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const b = bench()
     let attempts = 0
     b.sessions.create.mockImplementation(() => ++attempts === 1
@@ -334,14 +351,19 @@ describe('UiWorkspaceService', () => {
       : Promise.resolve(sid('retry')))
     b.workspaces.list.set(workspaceState([workspace('recent')]))
     b.sessions.list.set(sessionState())
+    // The boot-time auto-connect is the path a tenant page takes, so a refusal here has
+    // to reach the surface rather than only the console.
     await vi.waitFor(() => {
-      expect(warning).toHaveBeenCalledWith('initial workspace selection failed:', expect.any(Error))
+      expect(b.uiWorkspace.sessionFailure.getSnapshot()).toEqual({
+        kind: 'other', message: 'attach exploded',
+      })
     })
     b.workspaces.list.update(state => ({ ...state, items: [...state.items] }))
     await vi.waitFor(() => {
       expect(b.sessions.open).toHaveBeenCalledWith(sid('retry'))
     })
     expect(attempts).toBe(2)
+    expect(b.uiWorkspace.sessionFailure.getSnapshot()).toBeUndefined()
 
     const changed = bench()
     const pending = Promise.withResolvers<SessionId>()

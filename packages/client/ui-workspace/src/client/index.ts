@@ -22,6 +22,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the Session root standard-hook merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+// Type-only: pulls the Connection service merge (ctx.connection).
+import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from './contract/slots.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
@@ -96,6 +98,10 @@ export function apply(ctx: Context): void {
   }
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
   const browserInjected = (): WorkspaceBrowserInjected => ({
+    // A tenant page lists only sessions: the Session's Workspace IS the tenant,
+    // so workspace sections carry no information. Read through a hook, not a
+    // captured value — the registration memoizes this result.
+    tenantActive: () => ctx.get('connection')?.tenantToken !== undefined,
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },

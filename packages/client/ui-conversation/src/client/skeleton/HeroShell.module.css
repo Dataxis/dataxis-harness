@@ -42,6 +42,93 @@
   color: var(--dsw-alias-label-primary);
 }
 
+/* Cold start: the tenant Workspace is provisioned server-side before the first
+   session exists. The mark shimmers — a soft band of the page background sweeps
+   across it — which reads as loading, where a pulse reads as idle breathing.
+   Declared for the mark AND its wrapper: the brand mark is an <svg>, and SVG
+   elements render no pseudo-elements, so the sweep must also live on the HTML
+   span around it for the fallback logo. */
+.wordmarkLoading,
+.brandShimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.wordmarkLoading::after,
+.brandShimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    100deg,
+    transparent 35%,
+    var(--dsw-alias-bg-base) 50%,
+    transparent 65%
+  );
+  background-size: 250% 100%;
+  animation: hero-shimmer 1.5s linear infinite;
+}
+
+@keyframes hero-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -150% 0; }
+}
+
+/* The status row's spinner still marks progress; a sweeping band without motion
+   would just be a highlight parked on the mark. */
+@media (prefers-reduced-motion: reduce) {
+  .wordmarkLoading::after,
+  .brandShimmer::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Boot continuity: the framework-free boot page tears down as React mounts, so
+   the provisioning state shows the same circular arc the boot page used. */
+.spinner {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  corner-shape: round;
+  border: 2px solid var(--dsw-alias-border-l2);
+  animation: hero-spin 0.8s linear infinite;
+}
+
+.spinner::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(var(--dsw-alias-brand-primary) 72deg, transparent 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+}
+
+@keyframes hero-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+.provisioning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-caption);
+}
+
 /* Workspace row sits 12px above the input card (figma y80 → y112). */
 .body {
   position: relative;

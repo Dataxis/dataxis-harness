@@ -161,9 +161,11 @@ function nextSessionOrderAccount({
 }
 
 /** Grouping and ordering menu; own open state so it resets with the wide chrome. */
-function ViewOptionsMenu({ groupBy, orderBy, onGroupPick, onOrderPick, t }: {
+function ViewOptionsMenu({ groupBy, orderBy, flatOnly, onGroupPick, onOrderPick, t }: {
   groupBy: 'workspace' | 'flat'
   orderBy: SessionOrderBy
+  /** Tenant lists are flat by definition: drop the grouping choice entirely. */
+  flatOnly: boolean
   onGroupPick: (mode: 'workspace' | 'flat') => void
   onOrderPick: (mode: SessionOrderBy) => void
   t: WorkspaceBrowserProps['t']
@@ -174,10 +176,14 @@ function ViewOptionsMenu({ groupBy, orderBy, onGroupPick, onOrderPick, t }: {
       open={open}
       onClose={() => { setOpen(false) }}
       items={[
-        { type: 'label' as const, id: 'group-by', text: t('groupBy.label') },
-        { id: 'workspace', label: t('groupBy.workspace') },
-        { id: 'flat', label: t('groupBy.flat') },
-        { type: 'separator' as const, id: 'order-by-separator' },
+        ...flatOnly
+          ? []
+          : [
+            { type: 'label' as const, id: 'group-by', text: t('groupBy.label') },
+            { id: 'workspace', label: t('groupBy.workspace') },
+            { id: 'flat', label: t('groupBy.flat') },
+            { type: 'separator' as const, id: 'order-by-separator' },
+          ],
         { type: 'label' as const, id: 'order-by', text: t('orderBy.label') },
         { id: 'manual', label: t('orderBy.manual') },
         { id: 'updated', label: t('orderBy.updated') },
@@ -821,6 +827,7 @@ export function WorkspaceBrowser({
   searchResultLimit,
   useDirectoryFlow,
   useHostInfo,
+  tenantActive,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -832,6 +839,11 @@ export function WorkspaceBrowser({
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
   const groupBy = useStore(s => s.groupBy)
+  // A tenant session list is flat by definition: the session's workspace IS the
+  // tenant, so workspace sections carry no information and the stored grouping
+  // choice is moot. The Connection service reports whether this page has one.
+  const flatOnly = tenantActive()
+  const listGroupBy = flatOnly ? 'flat' : groupBy
   const orderBy = useStore(s => s.orderBy)
   const groupExpansion = useStore(s => s.groupExpansion)
   const sessionOrderByAccount = useStore(s => s.sessionOrderByAccount)
@@ -1072,7 +1084,7 @@ export function WorkspaceBrowser({
       <div className={css.sectionHeader}>
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
-            {groupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
+            {listGroupBy === 'flat' ? t('section.sessions') : t('section.workspaces')}
           </span>
         )}
         {wide && (
@@ -1135,8 +1147,9 @@ export function WorkspaceBrowser({
         <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
           {wide && (
             <ViewOptionsMenu
-              groupBy={groupBy}
+              groupBy={listGroupBy}
               orderBy={orderBy}
+              flatOnly={flatOnly}
               onGroupPick={(mode) => { actions.setGroupBy(mode) }}
               onOrderPick={(mode) => { actions.setOrderBy(mode) }}
               t={t}
@@ -1215,7 +1228,7 @@ export function WorkspaceBrowser({
               t={t}
             />
           )
-          : groupBy === 'flat'
+          : listGroupBy === 'flat'
             ? (
               <FlatList
                 useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}

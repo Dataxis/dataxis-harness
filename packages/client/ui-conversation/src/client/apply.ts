@@ -6,6 +6,8 @@ import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only service and declaration merges used by this assembly.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls the Connection service merge (ctx.connection).
+import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -70,6 +72,19 @@ interface WorkspaceNavigation {
   connectWorkspace(
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
   ): Promise<SessionId>
+  /**
+   * Last failed New Session attempt, or undefined. Structural rather than imported so
+   * this package needs no build-time dependency on ui-workspace's module. Optional
+   * because this cast is already unchecked: a composition whose ui-workspace predates
+   * the field must not take the conversation down with it.
+   */
+  sessionFailure?: ConversationInjected['sessionFailure']
+}
+
+/** Stand-in for a composition that reports no failure — the pre-field behaviour. */
+const NEVER_FAILS: ConversationInjected['sessionFailure'] = {
+  getSnapshot: () => undefined,
+  subscribe: () => () => {},
 }
 
 /** Resolve the session-scoped Conversation action face, failing loud. */
@@ -208,6 +223,10 @@ export function apply(ctx: Context): void {
       'conversation.hero.agentPreset': { kind: 'single', scope: 'root' },
     },
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
+      // A tenant page owns exactly one Workspace, provisioned server-side, so
+      // there is nothing for the cold-start picker to offer.
+      tenantActive: () => ctx.get('connection')?.tenantToken !== undefined,
+      sessionFailure: workspaceNavigation.sessionFailure ?? NEVER_FAILS,
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
       },
