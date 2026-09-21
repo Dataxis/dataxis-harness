@@ -53,3 +53,41 @@ describe('ChartCard stacked bars', () => {
     expect(new Set(fills).size).toBe(series.length)
   })
 })
+
+describe('ChartCard responsive layout', () => {
+  it('lays out at the measured container width so axis text keeps its size', () => {
+    // jsdom has no ResizeObserver, so the hook would take its fallback and this test
+    // would assert nothing. Report a narrow-panel width through a stub instead.
+    const observed: Element[] = []
+    class StubObserver {
+      constructor(private readonly notify: (entries: { contentRect: { width: number } }[]) => void) {}
+      observe(element: Element): void {
+        observed.push(element)
+        this.notify([{ contentRect: { width: 340 } }])
+      }
+      disconnect(): void {}
+    }
+    const original = globalThis.ResizeObserver
+    globalThis.ResizeObserver = StubObserver as unknown as typeof ResizeObserver
+    try {
+      const view = render(<ChartCard {...props(settledBlock(JSON.stringify({
+        title: 'Narrow',
+        chart_type: 'bar',
+        labels: ['A', 'B'],
+        series: [{ name: 's1', values: [1, 2] }],
+      })))} />)
+
+      expect(observed).toHaveLength(1)
+      const svg = view.container.querySelector('svg')
+      // The viewBox width equals the measured width and the height stays 320, so one
+      // user unit is one CSS pixel: an 11px tick renders at 11px in the sidebar panel
+      // instead of scaling down with it, and the plot area absorbs the difference.
+      expect(svg?.getAttribute('viewBox')).toBe('0 0 340 320')
+      // The labels themselves were never the problem — their rendered size was.
+      const tick = [...view.container.querySelectorAll('text')].find(t => t.textContent === 'A')
+      expect(tick?.getAttribute('font-size')).toBe('11')
+    } finally {
+      globalThis.ResizeObserver = original
+    }
+  })
+})

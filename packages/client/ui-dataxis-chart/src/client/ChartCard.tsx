@@ -7,8 +7,8 @@
  * @module @deepseek-ai/dsh-client-ui-dataxis-chart/client
  */
 
-import { useCallback, useMemo, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode, RefObject } from 'react'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallOwnerProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import css from './ChartCard.module.css'
@@ -133,7 +133,9 @@ function Legend({ items, hidden, onToggle }: LegendProps): ReactNode {
   )
 }
 
+/** Layout width shared by both chart forms. */
 interface ChartProps {
+  width: number
   chartType: string
   labels: string[]
   series: Series[]
@@ -144,13 +146,54 @@ interface ChartProps {
   onHide: () => void
 }
 
-function CartesianChart({ chartType, labels, series, hidden, stacked = false, onShow, onHide }: ChartProps): ReactNode {
-  const W = 720
+/** Layout width before the container has been measured (the historical fixed width). */
+const FALLBACK_WIDTH = 720
+
+/**
+ * Floor for the measured width.
+ *
+ * Below this the plot itself becomes unusable, and shrinking the axis text again
+ * would reintroduce the bug this hook exists to fix.
+ */
+const MIN_WIDTH = 260
+
+/**
+ * Track the rendered width of the chart container.
+ *
+ * These charts are hand-rolled SVG in user units, so a fixed `viewBox` scaled by
+ * CSS shrinks the axis text along with the container: legible at full width,
+ * ~5px in the sidebar panel. Measuring instead keeps one user unit equal to one
+ * CSS pixel, so an 11px tick stays 11px at any width and the plot area absorbs
+ * the difference.
+ * @param ref - element whose width drives the layout.
+ * @returns the measured width, or undefined before the first observation.
+ */
+function useContainerWidth(ref: RefObject<HTMLElement | null>): number | undefined {
+  const [width, setWidth] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    const element = ref.current
+    // jsdom has no ResizeObserver; the caller's fallback keeps tests deterministic.
+    if (element === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.width
+      // Guard against the height-only notification that `height: auto` can raise.
+      if (next !== undefined && next > 0) setWidth(Math.round(next))
+    })
+    observer.observe(element)
+    return () => { observer.disconnect() }
+  }, [ref])
+  return width
+}
+
+function CartesianChart({ width, chartType, labels, series, hidden, stacked = false, onShow, onHide }: ChartProps): ReactNode {
+  const W = width
   const H = 320
   const L = 56
   const R = 20
   const T = 18
-  const B = 46
+  // Deep enough for the rotated x labels: they ascend from the axis, so the margin
+  // has to clear the longest one rather than a single text line.
+  const B = 72
   const plotW = W - L - R
   const plotH = H - T - B
   const n = Math.max(labels.length, 1)
@@ -206,8 +249,22 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
       )
     }
     labels.forEach((lb, i) => {
+      const x = xFor(i)
+      const y = H - B + 16
+      // Angled up-left from the tick. Category names are long relative to the band
+      // width, so horizontal labels collide or run into their neighbours — worst in
+      // the narrow panel, where they were also scaling down. The bottom margin grew
+      // to match: a 45-degree label needs roughly its own width of vertical space.
       catLabels.push(
-        <text key={`cx${i}`} x={xFor(i)} y={H - B + 18} textAnchor="middle" fontSize={11} fill="var(--dsw-alias-label-secondary)">{lb}</text>,
+        <text
+          key={`cx${i}`}
+          x={x}
+          y={y}
+          textAnchor="end"
+          fontSize={11}
+          transform={`rotate(-45 ${x} ${y})`}
+          fill="var(--dsw-alias-label-secondary)"
+        >{lb}</text>,
       )
     })
   }
@@ -346,11 +403,15 @@ function CartesianChart({ chartType, labels, series, hidden, stacked = false, on
   )
 }
 
-function PieChart({ chartType, labels, series, colors, hidden, onShow, onHide }: ChartProps): ReactNode {
+function PieChart({ width, chartType, labels, series, colors, hidden, onShow, onHide }: ChartProps): ReactNode {
   const donut = chartType === 'donut'
-  const cx = 180
+  const W = width
+  const H = 300
+  const cx = W / 2
   const cy = 150
-  const r = 108
+  // Hold the radius proportional to the narrower axis so a small panel keeps the
+  // ring inside its bounds instead of clipping it.
+  const r = Math.min(108, W / 3.2)
   const rInner = donut ? 62 : 0
   const values = series[0]?.values ?? []
   let total = 0
@@ -396,7 +457,7 @@ function PieChart({ chartType, labels, series, colors, hidden, onShow, onHide }:
     : null
 
   return (
-    <svg className={css.svg} viewBox="0 0 360 300" role="img">
+    <svg className={css.svg} viewBox={`0 0 ${W} ${H}`} role="img">
       {slices}{center}
     </svg>
   )
@@ -407,6 +468,11 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
   const [hidden, setHidden] = useState<Record<string, boolean>>({})
   const [tip, setTip] = useState<Tip | null>(null)
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
+  // The plot area is the measured element: it spans the card's content box, so its
+  // width is the space the chart actually has, independent of the legend above.
+  const plotRef = useRef<HTMLDivElement>(null)
+  const measured = useContainerWidth(plotRef)
+  const chartWidth = Math.max(measured ?? FALLBACK_WIDTH, MIN_WIDTH)
 
   const args = useMemo(() => parseArgs(block), [block])
 
@@ -449,8 +515,20 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
     : null
 
   const body = isPie
-    ? <PieChart chartType={chartType} labels={labels} series={series} colors={colors} hidden={hidden} onShow={show} onHide={hide} />
+    ? (
+      <PieChart
+        width={chartWidth}
+        chartType={chartType}
+        labels={labels}
+        series={series}
+        colors={colors}
+        hidden={hidden}
+        onShow={show}
+        onHide={hide}
+      />
+    )
     : <CartesianChart
+      width={chartWidth}
       chartType={chartType}
       labels={labels}
       series={series}
@@ -488,7 +566,7 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
         <div className={css.sub}>{sub}</div>
       </div>
       {legend}
-      <div className={css.body} onMouseMove={onMove} onMouseLeave={hide}>
+      <div className={css.body} ref={plotRef} onMouseMove={onMove} onMouseLeave={hide}>
         {body}
         {tipEl}
       </div>
