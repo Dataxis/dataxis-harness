@@ -14,7 +14,9 @@
     "src/loopback-hostname.ts",
     "src/rpc-host.ts",
     "src/rpc-schema.ts",
-    "src/rpc.ts"
+    "src/rpc.ts",
+    "src/tenant-token.ts",
+    "src/tenant.ts"
   ],
   "references": [
     {

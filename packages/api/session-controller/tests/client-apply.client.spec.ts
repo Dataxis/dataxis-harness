@@ -49,6 +49,7 @@ async function mount(initialGeneration?: ConnectionGeneration): Promise<Bench> {
   const generationListeners = new Set<() => void>()
   let generation = initialGeneration
   const connection: ConnectionHandle = {
+    tenantToken: undefined,
     isLoopback: true,
     generation: {
       getSnapshot: () => generation,

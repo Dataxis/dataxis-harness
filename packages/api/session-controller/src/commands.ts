@@ -52,6 +52,16 @@ interface SessionReadState {
   readonly events: readonly SessionEvent[]
 }
 
+/** Optional tenant workspace resolver provided by an out-of-tree plugin. */
+export interface TenantWorkspaceResolver {
+  /**
+   * Workspace path a new session should use for the request's tenant.
+   * @param tenantToken - the request's signed tenant token, when present.
+   * @returns the workspace path, or undefined to fall back.
+   */
+  resolveNewSessionCwd(tenantToken?: string): string | undefined
+}
+
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
   /**
@@ -84,7 +94,24 @@ export class SessionCommandController {
         })
       }
     }
-    const cwd = workspace?.path ?? request.cwd ?? this.defaultCwd
+    const tenantToken = (this.ctx.get('currentTenant') as { token?: () => string | undefined } | undefined)?.token?.()
+    let tenantCwd: string | undefined
+    try {
+      tenantCwd = (this.ctx.get('tenantWorkspace') as TenantWorkspaceResolver | undefined)?.resolveNewSessionCwd(tenantToken)
+    } catch (error) {
+      // A tenant boundary that cannot be established must refuse the session:
+      // creating it unscoped would breach the boundary this hook enforces.
+      throw new RemoteError('session/tenant-scope-required', `session refused: ${String(error)}`, {
+        reason: String(error),
+      })
+    }
+    // A tenant session belongs to its tenant workspace. Register that directory
+    // (idempotent by path) so the session groups under a real Workspace and the
+    // sidebar opens its files, then attach below as for any other workspace.
+    if (tenantCwd !== undefined) {
+      workspace = await this.ctx.workspaceRegistry.create(tenantCwd)
+    }
+    const cwd = tenantCwd ?? workspace?.path ?? request.cwd ?? this.defaultCwd
     let adopted: Agent
     try {
       adopted = await this.agents.ensureSession(

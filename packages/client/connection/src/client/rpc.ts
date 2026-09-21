@@ -7,6 +7,7 @@ import {
 } from '../rpc.ts'
 import type { ClientConnectionRpc, ConnectionRpcResult } from '../rpc.ts'
 import { randomUuid } from './random-uuid.ts'
+import { TENANT_TOKEN_HEADER, readTenantToken } from '../tenant-token.ts'
 
 const INTERNAL_BASE = 'http://dsh.internal'
 const CHANNEL_PATTERN = /^\/[A-Za-z0-9._~-]+$/
@@ -21,6 +22,12 @@ export type RpcStreamOpen = (
   payload: unknown,
   signal: AbortSignal,
 ) => AsyncIterable<unknown>
+
+/** Headers carrying the browsing session's tenant token, when it has one. */
+function tenantHeaders(): Record<string, string> {
+  const token = readTenantToken()
+  return token === undefined ? {} : { [TENANT_TOKEN_HEADER]: token }
+}
 
 /**
  * Create the browser-backed generic RPC caller.
@@ -44,7 +51,10 @@ export function createWebConnectionRpc(doFetch?: RpcFetch, openStream?: RpcStrea
         new URL(`${channel}/${endpoint}`, resolveBase()),
         {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...tenantHeaders(),
+          },
           body: JSON.stringify(message),
           ...signal === undefined ? {} : { signal },
         },

@@ -54,6 +54,14 @@ export type {
 } from '../rpc.ts'
 export type { RpcFetch } from './rpc.ts'
 
+// Tenant identity of the page: the token the embedding site put in the URL.
+// Exported from the CLIENT face so browser consumers never pull the Host
+// half's node:async_hooks through the package root.
+import { readTenantToken } from '../tenant-token.ts'
+export {
+  TENANT_QUERY, TENANT_TOKEN_HEADER, readTenantToken, resetTenantTokenCache,
+} from '../tenant-token.ts'
+
 /** Observable identity and Host facts for the active connection generation. */
 export interface ConnectionGenerationState {
   /** Active generation, or undefined before readiness and while reconnecting. */
@@ -112,6 +120,13 @@ interface ClientTransportGlobal {
  * Connection stays independent of downstream domain state.
  */
 export interface ConnectionHandle {
+  /**
+   * Tenant token the embedding page supplied as `?tenant=`, read once at load
+   * and remembered for the browsing session. Undefined on an untenanted page.
+   * Consumers read it to decide tenant-only presentation; the token itself is
+   * forwarded on every RPC call and is not otherwise interpreted here.
+   */
+  readonly tenantToken: string | undefined
   /**
    * Whether the privileged surface is reachable: the page authority is
    * loopback, the transport declares the page owns the Host
@@ -225,6 +240,7 @@ export function apply(ctx: Context): void {
     publishState(undefined)
   }
   const handle: ConnectionHandle = {
+    tenantToken: fixtureRpc === undefined ? readTenantToken() : undefined,
     isLoopback: transport?.ownsHost === true || pageLocation === undefined || isLoopbackHostname(pageLocation.hostname),
     generation: {
       getSnapshot: () => generation,

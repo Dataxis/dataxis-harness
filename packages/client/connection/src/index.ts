@@ -10,6 +10,7 @@ import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
 import { assertTrustedAuthority } from './api-request-trust.ts'
 import { BrowserAuth } from './browser-auth.ts'
 import { HostConnectionService } from './rpc-host.ts'
+import { TENANT_TOKEN_HEADER, currentTenantToken, runWithTenantToken } from './tenant.ts'
 
 export type {
   ConnectionFetchMethod,
@@ -40,6 +41,10 @@ export {
   serverResponseSchema,
 } from './rpc-schema.ts'
 export { HostConnectionService } from './rpc-host.ts'
+// The Host half needs only the header name; the browser-facing readers live on
+// the client face so importing this module never drags node:async_hooks into a
+// browser bundle.
+export { TENANT_TOKEN_HEADER } from './tenant-token.ts'
 
 export { API_PATH } from './api-path.ts'
 
@@ -125,10 +130,17 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
         res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
         return
       }
-      await bridge(req, res, fetchHandler, maxRequestBodyBytes)
+      const tenantToken = req.headers[TENANT_TOKEN_HEADER]
+      await runWithTenantToken(
+        typeof tenantToken === 'string' ? tenantToken : undefined,
+        () => bridge(req, res, fetchHandler, maxRequestBodyBytes),
+      )
     },
   }
   ctx.effect(() => ctx.webServer.register(route), 'client-connection: /api route')
+  // Expose the request-scoped tenant token to host code (the tenant plugin's
+  // workspace resolver) without coupling it to the HTTP layer.
+  ctx.provide('currentTenant', { token: currentTenantToken })
   ctx.inject(['attachments'], (attachmentCtx) => {
     assertImageBodyCapacity(attachmentCtx, maxRequestBodyBytes)
   })

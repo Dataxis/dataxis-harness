@@ -186,6 +186,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/agent-busy': { readonly reason: string }
     'session/invalid-time-zone': { readonly value: string }
     'session/workspace-attach-failed': { readonly sessionId: SessionId; readonly workspaceId: string }
+    /** Tenant admission refused: the request carried no establishable tenant scope. */
+    'session/tenant-scope-required': { readonly reason: string }
     'agent-preset/conflict': {
       readonly sessionId: SessionId
       readonly requestedPreset: string

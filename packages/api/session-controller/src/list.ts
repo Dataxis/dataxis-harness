@@ -18,6 +18,7 @@ import type {
   SessionListMetadata, SessionProjectionHints, SessionProjectionValues, SessionSearchItem,
   SessionSearchValue, SessionSummary,
 } from './types.ts'
+import type { TenantWorkspaceResolver } from './commands.ts'
 
 /** Default maximum stat-reported event count eligible for one cold projection observation. */
 export const DEFAULT_COLD_BLANK_PROBE_MAX_EVENTS = 16
@@ -148,9 +149,14 @@ export class ApiSessionList {
     signal?.throwIfAborted()
     const records = await this.ctx.sessionQuery.listSessions(signal)
     signal?.throwIfAborted()
+    // Tenant visibility: when a tenant workspace is active, list only that
+    // workspace's sessions (the workspace IS the tenant boundary).
+    const tenantToken = (this.ctx.get('currentTenant') as { token?: () => string | undefined } | undefined)?.token?.()
+    const tenantCwd = (this.ctx.get('tenantWorkspace') as TenantWorkspaceResolver | undefined)?.resolveNewSessionCwd(tenantToken)
     const items: SessionSummary[] = []
     const cold: SessionHeader[] = []
     for (const record of records) {
+      if (tenantCwd !== undefined && record.header.cwd !== tenantCwd) continue
       const live = this.ctx.sessions.get(record.header.id)
       if (live !== undefined) {
         items.push(this.summaryFor(live))

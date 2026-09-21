@@ -197,6 +197,7 @@ async function waitFor(check: () => void): Promise<void> {
 
 function provideClientServices(ctx: Context, remote: WorkspaceRemote): void {
   const connection: ConnectionHandle = {
+    tenantToken: undefined,
     isLoopback: true,
     generation: AVAILABLE_CONNECTION.generation,
     state: { getSnapshot: () => 'connected' as const, subscribe: () => () => {} },
