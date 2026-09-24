@@ -66,16 +66,37 @@ export const inject = [
 ]
 
 /**
+ * Deployment-varying presentation.
+ *
+ * `tenantMode` gates the tenant-shaped chrome — the flat session list, the dropped
+ * grouping choice. It is presentation only: the server enforces the tenant boundary
+ * and stamps the workspace regardless, so a deployment that wants the ordinary
+ * workspace browser turns this off without weakening anything.
+ *
+ * Read as a plain optional field rather than through a schema, because this package
+ * does not otherwise depend on schemastery and the loader applies no defaults here.
+ */
+export interface UiWorkspaceConfig {
+  /** Tenant-shaped chrome on/off. Defaults to true. */
+  readonly tenantMode?: boolean
+}
+
+/**
  * Register the browser and picker once their slot declarations are on the
  * ledger. Inject factories return plain callbacks; data reads use the
  * framework's global hooks.
  * @param ctx - client root context.
+ * @param config - resolved plugin config.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: UiWorkspaceConfig = {}): void {
+  const tenantMode = config.tenantMode ?? true
+  // Read through a hook, not a captured value — the registration memoizes it.
+  const tenantActive = (): boolean =>
+    tenantMode && ctx.get('connection')?.tenantToken !== undefined
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
   const uiWorkspace = new UiWorkspaceService(
-    ctx, ctx.remote.directoryPicker, workspaces, sessions)
+    ctx, ctx.remote.directoryPicker, workspaces, sessions, tenantActive)
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
 
@@ -99,9 +120,8 @@ export function apply(ctx: Context): void {
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // A tenant page lists only sessions: the Session's Workspace IS the tenant,
-    // so workspace sections carry no information. Read through a hook, not a
-    // captured value — the registration memoizes this result.
-    tenantActive: () => ctx.get('connection')?.tenantToken !== undefined,
+    // so workspace sections carry no information.
+    tenantActive,
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },

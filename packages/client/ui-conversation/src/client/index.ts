@@ -1,5 +1,6 @@
 /** Browser Conversation assemble core, React adapter, shell, and input plugin. */
-export { apply, inject } from './apply.ts'
+export { apply, inject, Config } from './apply.ts'
+export type { UiConversationConfig } from './apply.ts'
 export { UiConversation } from './conversation/assembly.ts'
 export type { ConversationBinding } from './conversation/assembly.ts'
 export { ConversationController, UnsupportedImageMediaTypeError } from './service.ts'

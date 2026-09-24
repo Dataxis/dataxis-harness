@@ -185,6 +185,8 @@ class FakeDirectoryPicker {
 interface BenchOptions {
   readonly workspaces?: WorkspaceSnapshot
   readonly sessions?: SessionListState
+  /** Whether the page carries a tenant token. Defaults to a non-tenant page. */
+  readonly tenantActive?: () => boolean
 }
 
 function bench(options: BenchOptions = {}) {
@@ -197,6 +199,7 @@ function bench(options: BenchOptions = {}) {
     directoryPicker.remote,
     workspaces,
     sessions as unknown as ISessions,
+    options.tenantActive ?? (() => false),
   )
   return { ctx, directoryPicker, sessions, uiWorkspace, workspaces }
 }
@@ -207,6 +210,32 @@ async function flush(): Promise<void> {
 }
 
 describe('UiWorkspaceService', () => {
+  it('creates the tenant Session when the page has no Workspace to connect to', async () => {
+    const b = bench({ tenantActive: () => true })
+    b.uiWorkspace.startSession()
+    await flush()
+    // No workspaceId: the Session Controller derives the cwd from the token.
+    expect(b.sessions.create.mock.calls.map(call => call[0])).toEqual([{}])
+  })
+
+  it('boots a tenant page without waiting for the Workspace list', async () => {
+    const b = bench({
+      // The state a tenant page actually reaches: the list is never fetched.
+      workspaces: workspaceState([], [], 'pending'),
+      sessions: sessionState([], undefined, 'ready'),
+      tenantActive: () => true,
+    })
+    await flush()
+    expect(b.sessions.create.mock.calls.map(call => call[0])).toEqual([{}])
+  })
+
+  it('still clears and creates nothing on a non-tenant page with no Workspace', async () => {
+    const b = bench({ sessions: sessionState([], undefined, 'ready') })
+    b.uiWorkspace.startSession()
+    await flush()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+  })
+
   it('reuses only an unarchived member blank and coalesces concurrent creation', async () => {
     const b = bench()
     const memberBlank = sid('member-blank')

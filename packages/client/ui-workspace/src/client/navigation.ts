@@ -135,12 +135,15 @@ class UiWorkspaceService extends Service implements UiWorkspace {
    * @param directoryPicker - the directory-picking Remote namespace.
    * @param workspaces - pure Workspace Controller.
    * @param sessions - pure Session Controller.
+   * @param tenantActive - whether the page carries a tenant token; a tenant page
+   *   never lists Workspaces, so it creates its Session without one.
    */
   constructor(
     ctx: Context,
     private readonly directoryPicker: ClientRemote['directoryPicker'],
     private readonly workspaces: IWorkspaces,
     private readonly sessions: ISessions,
+    private readonly tenantActive: () => boolean,
   ) {
     super(ctx, 'uiWorkspace')
     ctx.effect(() => this.watchNavigation(), 'ui-workspace: Workspace navigation policy')
@@ -182,10 +185,24 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       : undefined
     const target = workspaceId ?? currentWorkspaceId ?? recent
     if (target === undefined) {
+      // The tenant's Workspace IS the Session, and its cwd comes from the token,
+      // so there is nothing to pick. Creating without a workspaceId is the whole
+      // flow: the Session Controller resolves the tenant's cwd server-side.
+      if (this.tenantActive()) {
+        this.createTenantSession()
+        return
+      }
       this.sessions.clear()
       return
     }
     void this.connectWorkspace(target).then(
+      (sessionId) => { this.setFailure(undefined); this.sessions.open(sessionId) },
+      (reason: unknown) => { this.setFailure(UiWorkspaceService.classify(reason)) },
+    )
+  }
+
+  private createTenantSession(): void {
+    void this.sessions.create({}).then(
       (sessionId) => { this.setFailure(undefined); this.sessions.open(sessionId) },
       (reason: unknown) => { this.setFailure(UiWorkspaceService.classify(reason)) },
     )
@@ -220,20 +237,27 @@ class UiWorkspaceService extends Service implements UiWorkspace {
       if (disposed) return
       if (this.clearArchivedCurrent()) return
       if (initial !== 'waiting') return
-      const workspace = this.workspaces.list.getSnapshot()
       const sessions = this.sessions.list.getSnapshot()
-      if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
+      if (sessions.phase !== 'ready') return
+      // A tenant page lists only Sessions, so its Workspace list is never
+      // fetched. Requiring it to be ready would stall the auto-connect forever:
+      // no picker, no Workspace load, no Session, still provisioning.
+      const tenantPage = this.tenantActive()
+      const workspace = tenantPage ? undefined : this.workspaces.list.getSnapshot()
+      if (workspace !== undefined && workspace.phase !== 'ready') return
       if (sessions.current !== undefined) {
         initial = 'done'
         return
       }
-      const target = recentWorkspace(workspace.items, sessions.byId)
-      if (target === undefined) {
+      const target = workspace === undefined
+        ? undefined
+        : recentWorkspace(workspace.items, sessions.byId)
+      if (target === undefined && !tenantPage) {
         initial = 'done'
         return
       }
       initial = 'connecting'
-      void this.connectWorkspace(target).then(
+      void (target === undefined ? this.sessions.create({}) : this.connectWorkspace(target)).then(
         (sessionId) => {
           if (disposed) return
           this.setFailure(undefined)

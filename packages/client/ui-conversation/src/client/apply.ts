@@ -1,5 +1,6 @@
 /** Registers the target-neutral Conversation assembly, shell, input, and docks. */
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore, type BoundActions } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -106,10 +107,28 @@ function concreteConversation(ctx: Context): ConversationController {
 }
 
 /**
+ * Deployment-varying presentation.
+ *
+ * `tenantMode` gates the tenant-shaped chrome — the provisioning state, the hidden
+ * picker, the composer gate. It is presentation only: the tenant boundary is
+ * enforced by the server regardless. A deployment that wants the ordinary
+ * workspace UI while still enforcing permissions turns this off.
+ */
+export interface UiConversationConfig {
+  /** Tenant-shaped chrome on/off. Defaults to true. */
+  readonly tenantMode: boolean
+}
+
+export const Config: z<UiConversationConfig> = z.object({
+  tenantMode: z.boolean().default(true),
+})
+
+/**
  * Mount the Conversation core and target-neutral presentation.
  * @param ctx - Client root context.
+ * @param config - resolved plugin config.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: UiConversationConfig): void {
   const sessions = ctx.sessions
   const slots = ctx.slots
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
@@ -225,7 +244,7 @@ export function apply(ctx: Context): void {
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       // A tenant page owns exactly one Workspace, provisioned server-side, so
       // there is nothing for the cold-start picker to offer.
-      tenantActive: () => ctx.get('connection')?.tenantToken !== undefined,
+      tenantActive: () => config.tenantMode && ctx.get('connection')?.tenantToken !== undefined,
       sessionFailure: workspaceNavigation.sessionFailure ?? NEVER_FAILS,
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
