@@ -360,7 +360,7 @@ export function ConversationRoot({
           t={t}
           renderSlot={renderSlot}
           provisioning={provisioning}
-          failure={provisioning ? failure : undefined}
+          failure={failure}
         />
       )}
       {hero && !provisioning && heroWorkspaceRow}

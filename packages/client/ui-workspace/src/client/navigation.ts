@@ -125,9 +125,19 @@ class UiWorkspaceService extends Service implements UiWorkspace {
    * @returns the failure to publish.
    */
   private static classify(reason: unknown): SessionFailure {
-    const code = (reason as { rpcError?: { code?: unknown } } | undefined)?.rpcError?.code
+    // Three wrappers reach here: SessionCreateError (whose `rpcError` is the Host's
+    // RemoteFailure), a bare RemoteFailure from another call, and a folded transport
+    // error. Read the code from each, then fall back to the refusal's own wording so
+    // a renamed code still surfaces as the registered-identity message.
+    const shape = reason as
+      | { rpcError?: { code?: unknown }; code?: unknown; error?: { code?: unknown }; message?: unknown }
+      | undefined
+    const code = shape?.rpcError?.code ?? shape?.code ?? shape?.error?.code
     if (code === 'session/tenant-scope-required') return { kind: 'unregistered' }
-    return { kind: 'other', message: reason instanceof Error ? reason.message : String(reason) }
+    const message = typeof shape?.message === 'string' ? shape.message : String(reason)
+    // The Host composes "session refused: Error: no data-access scope for <email>".
+    if (/no data-access scope|tenant-scope/.test(message)) return { kind: 'unregistered' }
+    return { kind: 'other', message }
   }
 
   /**
