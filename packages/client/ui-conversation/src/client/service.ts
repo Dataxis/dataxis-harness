@@ -415,3 +415,22 @@ function imageMediaType(value: string): ImageMediaType {
 function revokePreview(url: string): void {
   if (url.startsWith('blob:')) URL.revokeObjectURL(url)
 }
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Predicate distinguishing the embedded tenant view from a direct visit. */
+    tenantSurface: TenantSurface
+  }
+}
+
+/**
+ * Whether this page is the embedded tenant surface. The Connection's tenant token is
+ * present only when the page was opened with `?tenant=`, which is what separates a
+ * customer's iframe from an operator opening the same deployment to debug it.
+ */
+export interface TenantSurface {
+  /**
+   * @returns true when tenant mode is on and the page carries a tenant token.
+   */
+  active(): boolean
+}

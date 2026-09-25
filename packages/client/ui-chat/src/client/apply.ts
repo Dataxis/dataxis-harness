@@ -24,6 +24,7 @@ import { ApprovalCommand } from './chat/ApprovalCommand.tsx'
 import { ChatView } from './chat/ChatView.tsx'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { StatsLine } from './chat/StatsLine.tsx'
+import { setTenantChromeHidden } from './chat/tenant-chrome.ts'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { DetailsPanel } from './details/DetailsPanel.tsx'
 import { en, NS, zh } from './locale.ts'
@@ -65,6 +66,9 @@ export function apply(ctx: Context): void {
     }
     return source
   }
+  // Read before any node renders. The predicate is ui-conversation's, so the
+  // embedded-view decision has one source across the chat, the hero and the sidebar.
+  setTenantChromeHidden(ctx.get('tenantSurface')?.active() ?? false)
   registerConversationNodes(ctx)
   registerChatNodeRenderers(ctx)
   ctx.uiSession.provide({

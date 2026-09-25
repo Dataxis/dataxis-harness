@@ -134,6 +134,18 @@ export function apply(ctx: Context, config: UiConversationConfig): void {
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   const uiConversation = new UiConversation(ctx, sessions)
 
+  // One seam for every surface that must withhold operator chrome from the embedded
+  // view. The tenant token is present only when the page was opened with `?tenant=`,
+  // so its presence is exactly the difference between a customer's iframe and an
+  // operator opening the deployment directly to debug it.
+  //
+  // `?? true` restates the Config schema's default for the case a host mounts this
+  // plugin without a resolved config (the client test runtime does): the predicate is
+  // reachable from any consumer's apply, so it cannot assume config arrived.
+  const tenantSurfaceActive = (): boolean => (config?.tenantMode ?? true)
+    && ctx.get('connection')?.tenantToken !== undefined
+  ctx.provide('tenantSurface', { active: tenantSurfaceActive })
+
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-conversation: dictionaries')
   const t = ctx.locale.bind(NS)
   const conversationStore = createConversationStore()
@@ -244,7 +256,7 @@ export function apply(ctx: Context, config: UiConversationConfig): void {
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
       // A tenant page owns exactly one Workspace, provisioned server-side, so
       // there is nothing for the cold-start picker to offer.
-      tenantActive: () => config.tenantMode && ctx.get('connection')?.tenantToken !== undefined,
+      tenantActive: tenantSurfaceActive,
       sessionFailure: workspaceNavigation.sessionFailure ?? NEVER_FAILS,
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),

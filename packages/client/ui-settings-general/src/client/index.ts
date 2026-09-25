@@ -143,19 +143,28 @@ export function apply(ctx: ClientContext): void {
       },
     },
   })
-  ctx.slots.inject('sidebar.settings', () => ctx.slots.register({
-    name: 'sidebar.settings',
-    locale: NS,
-    children: {
-      'settings.trigger': { kind: 'single', scope: 'root' },
-      'settings.header': { kind: 'single', scope: 'root' },
-      'settings.action': { kind: 'list', scope: 'root' },
-      'settings.close': { kind: 'single', scope: 'root' },
-      'settings.section': { kind: 'list', scope: 'root' },
-      'settings.onboarding': { kind: 'list', scope: 'root' },
-    },
-    inject: shellInjected,
-  }, SettingsRoot))
+  // Not registered on the tenant surface: this occupant IS the settings panel — its
+  // module doc names the panel chrome, the section navigation and the trigger — so
+  // withholding it removes the operator affordance from a customer's iframe while an
+  // operator opening the deployment directly (no tenant token) keeps it.
+  //
+  // Reads the Connection rather than ui-conversation's `tenantSurface`: ui-conversation
+  // already depends on the settings packages, so the reverse edge would close a cycle.
+  if (ctx.get('connection')?.tenantToken === undefined) {
+    ctx.slots.inject('sidebar.settings', () => ctx.slots.register({
+      name: 'sidebar.settings',
+      locale: NS,
+      children: {
+        'settings.trigger': { kind: 'single', scope: 'root' },
+        'settings.header': { kind: 'single', scope: 'root' },
+        'settings.action': { kind: 'list', scope: 'root' },
+        'settings.close': { kind: 'single', scope: 'root' },
+        'settings.section': { kind: 'list', scope: 'root' },
+        'settings.onboarding': { kind: 'list', scope: 'root' },
+      },
+      inject: shellInjected,
+    }, SettingsRoot))
+  }
 
   ctx.slots.inject('settings.trigger', () =>
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))

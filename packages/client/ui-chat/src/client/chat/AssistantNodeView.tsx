@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo } from 'react'
 import type { ChatNodeViewProps, TurnTailOwnerProps } from '../contract/slots.ts'
 import { AssistantMarkdown } from './AssistantMarkdown.tsx'
+import { tenantChromeHidden } from './tenant-chrome.ts'
 
 /** Streaming, settled, and interrupted Assistant states share one keyed renderer instance. */
 export const AssistantNodeView = memo(function AssistantNodeView({
@@ -20,11 +21,13 @@ export const AssistantNodeView = memo(function AssistantNodeView({
     () => owner === undefined ? undefined : fileMentions(owner),
     [fileMentions, owner],
   )
-  const reasoningHidden = turnProcess !== undefined
+  // On the tenant surface the reasoning never renders, folded or not: it is model
+  // working-out a customer has no reason to read, and it costs context in the frame.
+  const reasoningHidden = tenantChromeHidden() || (turnProcess !== undefined
     && turnProcess.foldable
     && turnProcess.spec.answerStep === data.step
     && turnProcess.spec.inlineReasoning
-    && !turnProcess.open
+    && !turnProcess.open)
   const revealProcess = useCallback(() => { turnProcess?.setOpen(true) }, [turnProcess])
   return (
     <AssistantMarkdown
