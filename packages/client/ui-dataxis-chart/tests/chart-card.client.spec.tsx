@@ -19,6 +19,58 @@ function props(block: ToolCallBlock): ToolCallOwnerProps {
   } as unknown as ToolCallOwnerProps
 }
 
+describe('ChartCard axis captions and margins', () => {
+  const argsOf = (extra: Record<string, unknown>): string => JSON.stringify({
+    title: 'T',
+    chart_type: 'bar',
+    labels: ['A'],
+    series: [{ name: 'Views', values: [3] }],
+    ...extra,
+  })
+
+  /** The y-axis spine: the only line drawn with the l2 border token. */
+  const leftMargin = (view: { container: HTMLElement }): number => {
+    const spine = [...view.container.querySelectorAll('line')]
+      .find(line => line.getAttribute('stroke') === 'var(--dsw-alias-border-l2)')
+    return Number(spine?.getAttribute('x1'))
+  }
+
+  it('renders the axis captions the tool requires', () => {
+    const view = render(<ChartCard {...props(settledBlock(argsOf({
+      x_label: 'Country',
+      y_label: 'Views (in millions)',
+    })))} />)
+    const text = view.container.textContent ?? ''
+    expect(text).toContain('Country')
+    expect(text).toContain('Views (in millions)')
+  })
+
+  it('grows the left margin for wide ticks instead of drawing past the edge', () => {
+    const small = render(<ChartCard {...props(settledBlock(argsOf({})))} />)
+    const large = render(<ChartCard {...props(settledBlock(argsOf({
+      series: [{ name: 'Views', values: [1_200_000] }],
+    })))} />)
+    expect(leftMargin(large)).toBeGreaterThan(leftMargin(small))
+    expect(leftMargin(large)).toBeGreaterThan(56)
+    // No text is positioned left of the viewBox origin, which is where the ticks
+    // escaped when the margin was the fixed 56px.
+    for (const node of large.container.querySelectorAll('text')) {
+      const x = Number(node.getAttribute('x'))
+      if (!Number.isNaN(x)) expect(x).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('reserves the extra line the x caption occupies', () => {
+    const without = render(<ChartCard {...props(settledBlock(argsOf({})))} />)
+    const withCaption = render(<ChartCard {...props(settledBlock(argsOf({ x_label: 'Country' })))} />)
+    const axisY = (view: { container: HTMLElement }): number => Number(
+      [...view.container.querySelectorAll('line')]
+        .find(line => line.getAttribute('stroke') === 'var(--dsw-alias-border-l2)')?.getAttribute('y2'),
+    )
+    expect(axisY(withCaption)).toBeLessThan(axisY(without))
+  })
+})
+
 describe('ChartCard stacked bars', () => {
   it('stacks segments on top of each other, not side by side', () => {
     const view = render(<ChartCard {...props(settledBlock(JSON.stringify({

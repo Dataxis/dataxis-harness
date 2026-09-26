@@ -30,6 +30,8 @@ interface ChartArgs {
   series?: RawSeries[]
   stacked?: boolean
   colors?: string[]
+  x_label?: string
+  y_label?: string
 }
 
 interface Series {
@@ -142,6 +144,10 @@ interface ChartProps {
   hidden: Record<string, boolean>
   stacked?: boolean
   colors: string[]
+  /** x-axis caption (metric and unit). Absent on the radial forms, where it has no axis. */
+  xLabel?: string | undefined
+  /** y-axis caption (metric and unit). Absent on the radial forms. */
+  yLabel?: string | undefined
   onShow: (title: string, rows: TipRow[]) => void
   onHide: () => void
 }
@@ -185,16 +191,18 @@ function useContainerWidth(ref: RefObject<HTMLElement | null>): number | undefin
   return width
 }
 
-function CartesianChart({ width, chartType, labels, series, hidden, stacked = false, onShow, onHide }: ChartProps): ReactNode {
+function CartesianChart({
+  width, chartType, labels, series, hidden, stacked = false, xLabel, yLabel, onShow, onHide,
+}: ChartProps): ReactNode {
   const W = width
   const H = 320
-  const L = 56
   const R = 20
   const T = 18
   // Deep enough for the rotated x labels: they ascend from the axis, so the margin
-  // has to clear the longest one rather than a single text line.
-  const B = 72
-  const plotW = W - L - R
+  // has to clear the longest one rather than a single text line. A caption needs a
+  // line of its own underneath them.
+  const hasXCaption = xLabel !== undefined && xLabel !== ''
+  const B = hasXCaption ? 88 : 72
   const plotH = H - T - B
   const n = Math.max(labels.length, 1)
   const visible = series.filter(s => !hidden[s.name])
@@ -216,10 +224,21 @@ function CartesianChart({ width, chartType, labels, series, hidden, stacked = fa
   }
   const top = niceMax(maxV)
   const yTicks = ticks(top, 5)
+  const horizontal = chartType === 'hbar'
+
+  // Left margin sized to the text it has to hold. A fixed 56px clipped six-figure
+  // ticks, which then drew outside the card's left edge; horizontal bars carry
+  // category names in the same place, and those are longer still.
+  const widest = Math.max(
+    0,
+    ...(horizontal ? labels : yTicks.map(t => fmt(t))).map(text => text.length * 6.4),
+  )
+  const hasYCaption = yLabel !== undefined && yLabel !== ''
+  const L = Math.min(190, Math.max(56, Math.ceil(widest) + 14 + (hasYCaption ? 18 : 0)))
+  const plotW = W - L - R
 
   const xFor = (i: number): number => (n === 1 ? L + plotW / 2 : L + plotW * (i / (n - 1)))
   const yFor = (v: number): number => T + plotH * (1 - v / top)
-  const horizontal = chartType === 'hbar'
 
   const grid: ReactNode[] = []
   const catLabels: ReactNode[] = []
@@ -399,6 +418,25 @@ function CartesianChart({ width, chartType, labels, series, hidden, stacked = fa
   return (
     <svg className={css.svg} viewBox={`0 0 ${W} ${H}`} role="img">
       {grid}{axes}{marks}{catLabels}
+      {hasYCaption ? (
+        <text
+          x={12}
+          y={T + plotH / 2}
+          textAnchor="middle"
+          fontSize={11}
+          fill="var(--dsw-alias-label-secondary)"
+          transform={`rotate(-90 12 ${T + plotH / 2})`}
+        >{yLabel}</text>
+      ) : null}
+      {hasXCaption ? (
+        <text
+          x={L + plotW / 2}
+          y={H - 8}
+          textAnchor="middle"
+          fontSize={11}
+          fill="var(--dsw-alias-label-secondary)"
+        >{xLabel}</text>
+      ) : null}
     </svg>
   )
 }
@@ -535,6 +573,8 @@ export function ChartCard({ block }: ToolCallOwnerProps): ReactNode {
       hidden={hidden}
       stacked={args.stacked === true}
       colors={colors}
+      xLabel={args.x_label}
+      yLabel={args.y_label}
       onShow={show}
       onHide={hide}
     />
