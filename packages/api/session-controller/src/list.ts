@@ -152,7 +152,18 @@ export class ApiSessionList {
     // Tenant visibility: when a tenant workspace is active, list only that
     // workspace's sessions (the workspace IS the tenant boundary).
     const tenantToken = (this.ctx.get('currentTenant') as { token?: () => string | undefined } | undefined)?.token?.()
-    const tenantCwd = (this.ctx.get('tenantWorkspace') as TenantWorkspaceResolver | undefined)?.resolveNewSessionCwd(tenantToken)
+    const resolver = this.ctx.get('tenantWorkspace') as TenantWorkspaceResolver | undefined
+    let tenantCwd: string | undefined
+    try {
+      tenantCwd = resolver?.resolveNewSessionCwd(tenantToken)
+    } catch {
+      // The identity is not a registered tenant. The list is a filter, so the answer is
+      // "nothing is visible" rather than a failure: refusing here stranded the client,
+      // whose boot auto-connect waits for this list before it can create the Session
+      // that would itself be refused — and that refusal is what it has to report. An
+      // empty list lets that create happen and the refusal reach the surface.
+      return []
+    }
     const items: SessionSummary[] = []
     const cold: SessionHeader[] = []
     for (const record of records) {
