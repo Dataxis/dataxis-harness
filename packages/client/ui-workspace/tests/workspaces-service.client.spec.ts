@@ -236,6 +236,23 @@ describe('UiWorkspaceService', () => {
     expect(b.sessions.create).not.toHaveBeenCalled()
   })
 
+  it('never adopts a delegated session as a new one', async () => {
+    const b = bench()
+    const audit = sid('audit-blank')
+    // An audit's session matches every part of the reuse test below — blank, in the
+    // same workspace, unarchived — except that it is delegated, which is the only
+    // thing that may keep a new session from opening its read-only record.
+    b.workspaces.list.set(workspaceState([workspace('alpha', [audit])], []))
+    b.sessions.list.set({
+      ...sessionState([
+        summary('audit-blank', { blank: true, cwd: '/w/alpha', origin: 'subagent' }),
+      ], undefined, 'ready'),
+      ids: [audit],
+    })
+    await expect(b.uiWorkspace.connectWorkspace(wid('alpha'))).resolves.toBeDefined()
+    expect(b.sessions.create).toHaveBeenCalled()
+  })
+
   it('reuses only an unarchived member blank and coalesces concurrent creation', async () => {
     const b = bench()
     const memberBlank = sid('member-blank')

@@ -172,7 +172,13 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const sessions = this.sessions.list.getSnapshot()
     for (const id of sessions.ids) {
       const summary = sessions.byId[id]
-      if (summary !== undefined && summary.blank && summary.cwd === workspace.path
+      // Never adopt a delegated session. Its composer is read-only ("one-shot record"),
+      // and it is blank and lives in the same workspace, so every part of this test
+      // otherwise matches: a new session used to open an audit's record instead of an
+      // empty prompt. Subagents are listed on purpose (origin marks the lineage the
+      // sidebar nests), so the exclusion belongs here rather than in the list.
+      if (summary !== undefined && summary.origin !== 'subagent'
+        && summary.blank && summary.cwd === workspace.path
         && workspace.sessionIds.includes(summary.id)
         && !archived.includes(summary.id)) return summary.id
     }
