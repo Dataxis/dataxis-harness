@@ -129,6 +129,18 @@
   color: var(--dsw-alias-label-caption);
 }
 
+/*
+ * The one thing a reader in this state has to act on, so it is set apart from the
+ * sentence around it. Note this is literal black against a caption-coloured message:
+ * on the dark preference it is the lowest-contrast pair on the screen, and
+ * var(--dsw-alias-label-primary) would read as black on the light preference and as
+ * near-white on the dark one.
+ */
+.supportEmail {
+  color: #000;
+  font-weight: 700;
+}
+
 /* Workspace row sits 12px above the input card (figma y80 → y112). */
 .body {
   position: relative;

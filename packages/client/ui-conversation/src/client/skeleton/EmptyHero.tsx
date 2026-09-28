@@ -91,10 +91,14 @@ export interface HeroShellProps {
  * @returns the centered hero element tree.
  */
 export function HeroShell({ t, renderSlot, provisioning = false, failure, children }: HeroShellProps) {
-  const markClass = clsx(css.wordmark, provisioning && css.wordmarkLoading)
+  // The animation is the waiting signal. Once a failure replaces the waiting, nothing is
+  // in flight, so a sweeping wordmark would keep promising progress the reason just
+  // denied.
+  const animating = provisioning && failure === undefined
+  const markClass = clsx(css.wordmark, animating && css.wordmarkLoading)
   // The shimmer rides the HTML wrapper: the brand mark is an <svg>, which renders
   // no pseudo-elements, so the sweep cannot be drawn on the mark itself.
-  const brandClass = clsx(css.brandName, provisioning && css.brandShimmer)
+  const brandClass = clsx(css.brandName, animating && css.brandShimmer)
   return (
     <div className={css.root}>
       <div className={css.stack}>
@@ -112,7 +116,12 @@ export function HeroShell({ t, renderSlot, provisioning = false, failure, childr
             {failure === undefined
               ? t('hero.provisioning')
               : failure.kind === 'unregistered'
-                ? t('hero.unregistered')
+                ? (
+                  <>
+                    {t('hero.unregistered')}{' '}
+                    <strong className={css.supportEmail}>{t('hero.unregisteredSupport')}</strong>
+                  </>
+                )
                 : failure.message}
           </p>
         )}

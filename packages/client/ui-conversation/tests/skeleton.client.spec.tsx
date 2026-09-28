@@ -386,6 +386,13 @@ describe('tenant provisioning', () => {
     const alert = view.view.getByRole('alert')
     expect(alert.textContent).toContain('support@dataxisinternal.zohodesk.com')
     expect(alert.querySelector('[aria-hidden="true"]')).toBeNull()
+    // The one thing to act on is set apart from the sentence that introduces it.
+    expect(alert.querySelector('strong')?.textContent).toBe('support@dataxisinternal.zohodesk.com')
+    // And nothing animates: a sweeping wordmark would keep promising the Session the
+    // alert says is not coming.
+    for (const node of view.view.container.querySelectorAll('[class]')) {
+      expect(node.className).not.toMatch(/wordmarkLoading|brandShimmer/)
+    }
   })
 })
 

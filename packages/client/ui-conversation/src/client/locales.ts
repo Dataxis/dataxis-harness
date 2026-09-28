@@ -69,7 +69,8 @@ export const zh = {
   'hero.chooseWorkspace': '选择工作区',
   'hero.provisioning': '正在准备工作区…',
   'hero.unregistered':
-    '您的账户尚未注册。请联系支持：support@dataxisinternal.zohodesk.com',
+    '您的账户尚未注册。请联系支持：',
+  'hero.unregisteredSupport': 'support@dataxisinternal.zohodesk.com',
   'session.hierarchy': '会话层级',
   'todo.title': '任务',
   'todo.progress.done': '{done} 已完成',
@@ -224,7 +225,8 @@ export const en = {
   'hero.chooseWorkspace': 'Choose workspace',
   'hero.provisioning': 'Preparing your workspace…',
   'hero.unregistered':
-    'Your account is not registered. Please contact support at support@dataxisinternal.zohodesk.com',
+    'Your account is not registered. Please contact support at',
+  'hero.unregisteredSupport': 'support@dataxisinternal.zohodesk.com',
   'session.hierarchy': 'Session hierarchy',
   'todo.title': 'To-dos',
   'todo.progress.done': '{done} completed',
