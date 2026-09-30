@@ -349,3 +349,24 @@ export class CardForm<T> {
     for (const listener of this.listeners) listener()
   }
 }
+
+/**
+ * A boolean field, drafted as `true`/`false` text so one control kind reaches
+ * every card and a checkbox can stage through the same edit path a text input
+ * uses. An empty draft clears the field; any other text blocks the save.
+ * @param field - field name inside the namespace section.
+ * @returns the field's conversion spec.
+ */
+export function booleanField(field: string): CardFieldSpec {
+  return {
+    field,
+    format: value => typeof value === 'boolean' ? String(value) : '',
+    parse: (text) => {
+      const trimmed = text.trim()
+      if (trimmed === '') return { kind: 'clear' }
+      if (trimmed === 'true') return { kind: 'set', value: true }
+      if (trimmed === 'false') return { kind: 'set', value: false }
+      return undefined
+    },
+  }
+}

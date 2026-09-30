@@ -8,6 +8,9 @@ export type PluginsSettingsLocaleKey =
   | 'bashTitle' | 'bashDescription' | 'bashTimeoutMs' | 'bashTimeoutMsHint'
   | 'bashMaxOutputBytes' | 'bashMaxOutputBytesHint'
   | 'agentLoopTitle' | 'agentLoopDescription' | 'agentLoopMaxParallel' | 'agentLoopMaxParallelHint'
+  | 'jevGateTitle' | 'jevGateDescription'
+  | 'precheck' | 'precheckHint' | 'dryRun' | 'dryRunHint' | 'block' | 'blockHint'
+  | 'minToolCalls' | 'minToolCallsHint' | 'sessionCap' | 'sessionCapHint'
   | 'webSearchTitle' | 'webSearchDescription'
   | 'webSearchApiKey' | 'webSearchApiKeyHint' | 'webSearchApiKeySet' | 'webSearchApiKeyUnset'
   | 'webSearchBaseUrl' | 'webSearchBaseUrlHint' | 'webSearchMaxUses' | 'webSearchMaxUsesHint'
@@ -72,6 +75,18 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionRequired: 'Select at least one model before saving.',
   subagentModelSelectionConflict: 'Settings changed elsewhere. Discard your draft and try again.',
   subagentModelSelectionOff: 'Subagents use configured defaults or inherit the parent agent\'s model. Saved model choices are retained.',
+  jevGateTitle: 'Jev gate',
+  jevGateDescription: 'What the safety gate does with a turn, and whether it acts or only records.',
+  precheck: 'Pre-check turns',
+  precheckHint: 'Ask the classifier only for completed turns with enough tool calls, instead of every turn.',
+  dryRun: 'Dry run',
+  dryRunHint: 'Record the decision and dispatch nothing. Off, an admitted turn spawns the audit subagent.',
+  block: 'Block harmful turns',
+  blockHint: 'Refuse a blocked turn before the model is called. Adds a classifier round trip to every user turn.',
+  minToolCalls: 'Tool calls before classifying',
+  minToolCallsHint: 'Applies only while the pre-check is on.',
+  sessionCap: 'Dispatches per session',
+  sessionCapHint: 'Upper bound on audit subagents this gate may start for one session.',
 }
 
 /** Simplified Chinese copy. */
@@ -128,4 +143,16 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionRequired: '保存前请至少选择一个模型。',
   subagentModelSelectionConflict: '设置已在其他位置更新。请放弃修改后重试。',
   subagentModelSelectionOff: '关闭后，Subagent 使用配置的默认模型或继承父 Agent 的模型；已选模型会保留。',
+  jevGateTitle: 'Jev 安全门',
+  jevGateDescription: '安全门对一次会话回合的处理方式，以及它是执行还是仅记录。',
+  precheck: '预检回合',
+  precheckHint: '仅对工具调用足够多的已完成回合进行分类，而不是每个回合。',
+  dryRun: '试运行',
+  dryRunHint: '仅记录判定结果，不派发任何任务。关闭后，被允许的回合会启动审计子代理。',
+  block: '拦截有害回合',
+  blockHint: '在调用模型之前拒绝被拦截的回合。会为每个用户回合增加一次分类请求。',
+  minToolCalls: '分类前所需工具调用数',
+  minToolCallsHint: '仅在预检开启时生效。',
+  sessionCap: '每会话派发上限',
+  sessionCapHint: '本安全门为单个会话可启动的审计子代理数量上限。',
 }
