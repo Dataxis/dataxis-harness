@@ -73,7 +73,15 @@ export function apply(ctx: ClientContext): void {
   // locale/change re-registration wiring.
   const t = ctx.locale.bind(NS)
   // The shared SettingsScope mirror updates after document commits and reconnects.
-  const documentController = ctx.remote.$host.isLoopback
+  // A deployment behind a trusted hostname had no settings export at all: the document
+  // controller existed only on loopback, and the Host's fact for that is its own socket,
+  // not the page the browser loaded. A page carrying a real origin is one the Host's
+  // request fence already accepted, so it may read the document — that fence still
+  // decides every write, which is where authority over the stored settings lives.
+  const pageOrigin = globalThis.location?.origin
+  const documentReadable = ctx.remote.$host.isLoopback
+    || (pageOrigin !== undefined && pageOrigin !== 'null')
+  const documentController = documentReadable
     ? new SettingsDocumentStore(ctx, ctx.settingsScope.describe())
     : undefined
   const documentInjected = documentController === undefined
