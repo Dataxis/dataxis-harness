@@ -3,6 +3,7 @@ import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { DisclosureRow, IconContextInjectionOutline16, ReferenceIcon } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ContextMessageNode } from '../contract/snapshot.ts'
 import { contextBody } from './ContextBody.tsx'
+import { tenantChromeHidden } from './tenant-chrome.ts'
 import css from './ContextInjectionRow.module.css'
 
 /** Props for the logged non-user message presentation. */
@@ -30,6 +31,10 @@ export interface ContextInjectionRowProps {
  */
 export function ContextInjectionRow({ content, source, provenance, form, t }: ContextInjectionRowProps) {
   const [open, setOpen] = useState(false)
+  // A plugin-appended message is the assistant's own bookkeeping — the tenant scope block,
+  // the skill catalogue — not something the person on the other side of the iframe asked
+  // for or can act on. The tenant surface shows only the conversation.
+  if (tenantChromeHidden()) return null
   // Resolved rather than declared: a form whose fields are unreadable renders
   // the opaque body, and the marker must say what the row actually shows.
   const { rendered, summary, body } = contextBody(form, { content, source, t })

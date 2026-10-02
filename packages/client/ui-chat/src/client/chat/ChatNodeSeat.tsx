@@ -7,6 +7,7 @@ import { isPresentationTool, TURN_PROCESS_INDEPENDENT_KINDS } from '../contract/
 import { storedTurnProcessEntry } from '../stores.ts'
 import { useSearchableHidden } from './searchable-hidden.ts'
 import css from './ChatView.module.css'
+import { tenantChromeHidden } from './tenant-chrome.ts'
 
 interface ChatNodeSeatProps extends ChatNodeOwnerProps {
   readonly nodeKey: string
@@ -109,7 +110,16 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
     && foldable
     && processPresentation.compactAnswer
     && !processOpen
-  const processHidden = controllerInactive || (foldable && processMember && !processOpen)
+  // A tool call the disclosure would fold is hidden on the tenant surface whether or not
+  // that window is ready. Waiting for it leaves every call visible while the turn streams
+  // — which is exactly the interval the user is watching. A presentation tool is the
+  // artifact the answer is made of, so it stays.
+  const tenantIntermediary = routedNode !== undefined
+    && routedNode.kind === 'tool-call'
+    && !isPresentationToolCall(routedNode)
+  const processHidden = controllerInactive
+    || (foldable && processMember && !processOpen)
+    || (tenantIntermediary && tenantChromeHidden())
   const revealProcess = useCallback(() => {
     if (processMember) setOpen(true)
   }, [processMember, setOpen])
